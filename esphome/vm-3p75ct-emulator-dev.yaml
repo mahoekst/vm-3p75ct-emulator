@@ -1,3 +1,8 @@
+# ── Local development version ─────────────────────────────────────────────────
+# Uses the component from your local filesystem so you can edit C++ and
+# recompile immediately without pushing to GitHub.
+# Do NOT paste this file into Home Assistant — use vm-3p75ct-emulator.yaml.
+
 substitutions:
   device_name: vm-3p75ct-emulator
   modbus_unit_id: "1"    # Victron GX uses unit ID 1 when polling via Modbus TCP
@@ -48,7 +53,7 @@ wifi:
 captive_portal:
 
 logger:
-  level: INFO
+  level: DEBUG   # verbose during development
 
 api:
   encryption:
@@ -59,13 +64,12 @@ ota:
     password: !secret ota_password
 
 # ── Modbus TCP server ──────────────────────────────────────────────────────────
-# Custom local component — implements a minimal Modbus TCP server (FC03 only).
-# The ESP32 connects to WiFi; the Victron GX polls it on port 502 over the LAN.
-# No RS-485 hardware or extra board needed.
+# Uses component from local filesystem — edit components/ and recompile directly.
 external_components:
   - source:
       type: local
       path: components
+    components: [ modbus_tcp_server ]
 
 modbus_tcp_server:
   id: victron_meter

@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:esphome.io)",
+      "Bash(python3:*)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(git init:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(code:*)",
+      "Bash(curl -s \"https://api.github.com/repos/mahoekst/SunspecModbusServer/git/trees/HEAD?recursive=1\")",
+      "Bash(curl:*)",
+      "Bash(mkdir -p esphome/components docs .vscode)",
+      "Bash(git mv:*)"
+    ]
+  }
+}
