@@ -1,5 +1,6 @@
 #include "modbus_tcp_server.h"
 #include "esphome/core/log.h"
+#include <WiFi.h>
 
 namespace esphome {
 namespace modbus_tcp_server {
@@ -12,12 +13,29 @@ static const char *TAG = "modbus_tcp";
 
 void ModbusTcpServer::setup() {
   server_ = new WiFiServer(port_);
+  start_server_();
+}
+
+void ModbusTcpServer::start_server_() {
   server_->begin();
   ESP_LOGI(TAG, "Modbus TCP server listening on port %d (unit ID %d)", port_, unit_id_);
 }
 
 void ModbusTcpServer::loop() {
   if (!server_)
+    return;
+
+  // Restart the server socket when WiFi reconnects after a drop.
+  // On ESP32 Arduino the lwIP stack resets on reconnect, invalidating the
+  // existing server socket — begin() must be called again.
+  bool wifi_connected = (WiFi.status() == WL_CONNECTED);
+  if (wifi_connected && !wifi_was_connected_) {
+    ESP_LOGI(TAG, "WiFi (re)connected — restarting Modbus TCP server");
+    start_server_();
+  }
+  wifi_was_connected_ = wifi_connected;
+
+  if (!wifi_connected)
     return;
 
   WiFiClient client = server_->available();
@@ -30,24 +48,30 @@ void ModbusTcpServer::loop() {
 }
 
 // ---------------------------------------------------------------------------
-// Client handler — stays in loop while the connection is alive (up to 2 s)
+// Client handler — stays in loop while the connection is alive (up to 2 s).
+//
+// Timeout uses elapsed-time arithmetic (millis() - start) to avoid the
+// uint32_t rollover bug that occurs when millis() is near UINT32_MAX (~49 days).
 // ---------------------------------------------------------------------------
 
 void ModbusTcpServer::handle_client_(WiFiClient &client) {
-  client.setTimeout(200);  // ms — time to wait for each readBytes() call
-  uint32_t deadline = millis() + 2000;
+  client.setTimeout(200);  // ms — readBytes() per-call timeout
+  uint32_t start = millis();
+  const uint32_t kTimeoutMs = 2000;
 
-  while (client.connected() && millis() < deadline) {
+  while (client.connected() && (millis() - start) < kTimeoutMs) {
     if (client.available() >= 7) {  // MBAP header (6) + unit ID (1)
-      handle_request_(client);
-      deadline = millis() + 2000;   // reset timer after each successful request
+      if (handle_request_(client)) {
+        start = millis();  // reset idle timer only on a valid Modbus exchange
+      }
     }
     yield();
   }
 }
 
 // ---------------------------------------------------------------------------
-// Modbus TCP frame parser — handles a single FC03 request/response exchange
+// Modbus TCP frame parser — handles a single FC03 request/response exchange.
+// Returns true if a valid Modbus request was received and a response was sent.
 //
 // Modbus TCP ADU layout:
 //   [Transaction ID : 2 bytes]
@@ -57,31 +81,38 @@ void ModbusTcpServer::handle_client_(WiFiClient &client) {
 //   [PDU            : N bytes] (Function Code + Data)
 // ---------------------------------------------------------------------------
 
-void ModbusTcpServer::handle_request_(WiFiClient &client) {
+bool ModbusTcpServer::handle_request_(WiFiClient &client) {
   uint8_t header[7];
   if (client.readBytes(header, 7) != 7)
-    return;
+    return false;
 
   uint16_t transaction_id = ((uint16_t)header[0] << 8) | header[1];
   uint16_t protocol_id    = ((uint16_t)header[2] << 8) | header[3];
   uint16_t length         = ((uint16_t)header[4] << 8) | header[5];
-  // header[6] = unit ID (we accept any unit ID to be permissive)
+  // header[6] = unit ID (accepted regardless of value to be permissive)
 
   if (protocol_id != 0x0000) {
-    ESP_LOGW(TAG, "Non-Modbus protocol ID 0x%04X, ignoring", protocol_id);
-    return;
+    ESP_LOGW(TAG, "Non-Modbus protocol ID 0x%04X, dropping", protocol_id);
+    return false;
+  }
+
+  // Guard: length must be at least 2 (unit ID byte + at least 1 PDU byte).
+  // Without this check, length=0 would underflow to 65535 on the next line.
+  if (length < 2) {
+    ESP_LOGW(TAG, "MBAP length too small: %d", length);
+    return false;
   }
 
   // PDU length = Length field minus the 1-byte Unit ID
   uint16_t pdu_len = length - 1;
-  if (pdu_len == 0 || pdu_len > 253) {
-    ESP_LOGW(TAG, "Invalid PDU length %d", pdu_len);
-    return;
+  if (pdu_len > 253) {
+    ESP_LOGW(TAG, "PDU length %d exceeds Modbus maximum of 253", pdu_len);
+    return false;
   }
 
   uint8_t pdu[253];
   if (client.readBytes(pdu, pdu_len) != pdu_len)
-    return;
+    return false;
 
   uint8_t function_code = pdu[0];
 
@@ -89,7 +120,7 @@ void ModbusTcpServer::handle_request_(WiFiClient &client) {
     // Read Holding Registers: [FC=0x03][Start_H][Start_L][Qty_H][Qty_L]
     if (pdu_len < 5) {
       send_exception_(client, transaction_id, function_code, 0x03 /* illegal data value */);
-      return;
+      return true;
     }
 
     uint16_t start_addr = ((uint16_t)pdu[1] << 8) | pdu[2];
@@ -97,12 +128,19 @@ void ModbusTcpServer::handle_request_(WiFiClient &client) {
 
     if (quantity == 0 || quantity > 125) {
       send_exception_(client, transaction_id, function_code, 0x03);
-      return;
+      return true;
+    }
+
+    // Guard: ensure start_addr + quantity does not wrap the 16-bit address space.
+    // Without this, reading near address 65535 would silently wrap back to 0.
+    if ((uint32_t)start_addr + (uint32_t)quantity > 0x10000U) {
+      send_exception_(client, transaction_id, function_code, 0x02 /* illegal data address */);
+      return true;
     }
 
     ESP_LOGD(TAG, "FC03 addr=%d qty=%d", start_addr, quantity);
 
-    // Build response
+    // Build response:
     // MBAP (6) + Unit ID (1) + FC (1) + ByteCount (1) + registers (qty*2)
     uint16_t byte_count  = quantity * 2;
     uint16_t mbap_length = 3 + byte_count;  // unit_id + FC + byte_count + data
@@ -125,10 +163,12 @@ void ModbusTcpServer::handle_request_(WiFiClient &client) {
     }
 
     client.write(response, 9 + byte_count);
+    return true;
 
   } else {
     ESP_LOGD(TAG, "Unsupported function code 0x%02X", function_code);
     send_exception_(client, transaction_id, function_code, 0x01 /* illegal function */);
+    return true;
   }
 }
 

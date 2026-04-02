@@ -28,11 +28,16 @@ class ModbusTcpServer : public Component {
   uint8_t unit_id_{1};
   WiFiServer *server_{nullptr};
 
+  // Track WiFi state to detect reconnects and restart the server socket
+  bool wifi_was_connected_{false};
+
   // Sparse register map — only allocated addresses consume memory
   std::map<uint16_t, uint16_t> registers_;
 
+  void start_server_();
   void handle_client_(WiFiClient &client);
-  void handle_request_(WiFiClient &client);
+  // Returns true if a valid Modbus frame was received and responded to
+  bool handle_request_(WiFiClient &client);
   void send_exception_(WiFiClient &client, uint16_t transaction_id,
                        uint8_t function_code, uint8_t exception_code);
 };
