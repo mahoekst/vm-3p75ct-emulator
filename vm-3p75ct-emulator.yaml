@@ -1,6 +1,6 @@
 substitutions:
   device_name: vm-3p75ct-emulator
-  modbus_address: "1"
+  modbus_unit_id: "1"    # Victron GX uses unit ID 1 when polling via Modbus TCP
 
   # ── Home Assistant entity IDs ───────────────────────────────────────────────
   # Replace each value with the entity_id of the matching sensor in your HA.
@@ -25,6 +25,13 @@ substitutions:
 esphome:
   name: ${device_name}
   friendly_name: Victron VM-3P75CT Emulator
+  on_boot:
+    priority: 200   # after WiFi + component setup
+    then:
+      - lambda: |-
+          // Device type register — must return 0x000B (EM24 DINAV53).
+          // The Victron GX reads reg 4096 before accepting the meter.
+          id(victron_meter)->write_holding_register(4096, 0x000B);
 
 esp32:
   board: esp32dev
@@ -51,52 +58,19 @@ ota:
   - platform: esphome
     password: !secret ota_password
 
-# ── RS-485 UART ────────────────────────────────────────────────────────────────
-# Wire a MAX485 (or SP3485) transceiver between the ESP32 and the Victron GX
-# RS-485 port.  The GX RS-485 port is the same connector used for Victron
-# energy meters; it provides +5 V, GND, A+ and B-.
-#
-#   ESP32 GPIO17 (TX)  →  DI   (Driver Input on MAX485)
-#   ESP32 GPIO16 (RX)  →  RO   (Receiver Output on MAX485)
-#   ESP32 GPIO4        →  DE + RE tied together  (direction control)
-#   MAX485 A+          →  Victron GX RS-485 A+
-#   MAX485 B-          →  Victron GX RS-485 B-
-#
-uart:
-  id: rs485_uart
-  tx_pin: GPIO17
-  rx_pin: GPIO16
-  baud_rate: 9600
-  stop_bits: 1
-  parity: NONE
-  flow_control_pin: GPIO4
-
-# ── Modbus RTU slave ───────────────────────────────────────────────────────────
-# The component implements a Carlo Gavazzi EM24 / ET340 compatible Modbus RTU
-# slave.  The Victron GX driver (dbus-cgwacs) expects exactly this register
-# layout and device-type code.
+# ── Modbus TCP server ──────────────────────────────────────────────────────────
+# Custom local component — implements a minimal Modbus TCP server (FC03 only).
+# The ESP32 connects to WiFi; the Victron GX polls it on port 502 over the LAN.
+# No RS-485 hardware or extra board needed.
 external_components:
-  - source: github://epiclabs-io/esphome-modbus-server@master
-    refresh: 0s
+  - source:
+      type: local
+      path: components
 
-modbus_server:
+modbus_tcp_server:
   id: victron_meter
-  uart_id: rs485_uart
-  address: ${modbus_address}
-  holding_registers:
-    # EM24 measurement registers 0–79
-    - start_address: 0
-      number: 80
-      default: 0
-    # Device identification — reg 4096 must return 0x000B (EM24 DINAV53).
-    # The GX reads this before accepting the meter; wrong value = meter ignored.
-    - start_address: 4096
-      number: 2
-      default: 0
-      on_read:
-        lambda: |
-          if (address == 4096) return (uint16_t)0x000B;
-          return value;
+  port: 502
+  unit_id: ${modbus_unit_id}
 
 # ── Internal globals for cross-phase total power ───────────────────────────────
 globals:

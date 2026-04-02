@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-An ESPHome firmware for an ESP32 that emulates a **Victron VM-3P75CT** energy meter on RS-485/Modbus RTU. The Victron GX device (Venus OS, `dbus-cgwacs` driver) polls the ESP32 as if it were a real Carlo Gavazzi EM24 DINAV53 meter. Energy readings are pulled from Home Assistant sensor entities via the ESPHome native API and written into Modbus holding registers in real time.
+An ESPHome firmware for an ESP32 that emulates a **Victron VM-3P75CT** energy meter over **Modbus TCP** (WiFi). The Victron GX device (Venus OS) polls the ESP32 on port 502 as if it were a real Carlo Gavazzi EM24 DINAV53 meter. Energy readings are pulled from Home Assistant sensor entities via the ESPHome native API and written into Modbus holding registers in real time. No RS-485 hardware needed.
 
-The meter role (grid, PV inverter, EV charger, etc.) is configured in the Victron GX UI under **Settings → Energy Meters** after the ESP32 is connected.
+The meter role (grid, PV inverter, EV charger, etc.) is configured in the Victron GX UI under **Settings → Energy Meters** after pointing it at the ESP32's IP address.
 
 ## ESPHome Commands
 
@@ -31,8 +31,8 @@ esphome gen-api-key
 
 All user-facing configuration lives in the `substitutions:` block at the top of `vm-3p75ct-emulator.yaml`:
 
-- **`modbus_address`** — Modbus slave address; must match what the Victron GX is configured to poll (default `1`).
-- **`ha_l*_*`** — Home Assistant entity IDs for each measurement. Units must be: voltage in V, current in A, power in W (positive = import), frequency in Hz, energy in kWh (cumulative).
+- **`modbus_unit_id`** — Modbus unit ID the GX uses when polling (default `1`).
+- **`ha_l*_*`** — Home Assistant entity IDs for each measurement. Units: voltage in V, current in A, power in W (positive = import), frequency in Hz, energy in kWh (cumulative).
 
 WiFi credentials and API key live in `secrets.yaml` (not committed).
 
@@ -47,15 +47,31 @@ Home Assistant sensors
   on_value lambdas
         │  (scale + encode as INT32/UINT32/INT16)
         ▼
-  Modbus holding registers  (in-memory, inside esphome-modbus-server component)
-        │  (RS-485, Modbus RTU FC 0x03, 9600 8N1)
+  Modbus holding registers  (in-memory std::map, inside modbus_tcp_server component)
+        │  (TCP port 502, Modbus TCP FC 0x03)
         ▼
   Victron GX device  →  Venus OS D-Bus  →  VRM / MPPT / inverter control
 ```
 
+### Custom component — `components/modbus_tcp_server/`
+
+A minimal Modbus TCP server written as a local ESPHome external component. Implements FC 0x03 (Read Holding Registers) only — the only function code the Victron GX uses for meter polling.
+
+| File | Purpose |
+|------|---------|
+| `__init__.py` | ESPHome config schema + code generation |
+| `modbus_tcp_server.h` | C++ class declaration |
+| `modbus_tcp_server.cpp` | TCP server loop, MBAP frame parsing, FC03 response |
+
+Registers are stored in a `std::map<uint16_t, uint16_t>` — sparse, no pre-allocation needed.
+
+Key API used in sensor lambdas:
+- `id(victron_meter)->write_holding_register(addr, uint16_t value)`
+- `id(victron_meter)->read_holding_register(addr)` → `uint16_t`
+
 ### Modbus register layout (Carlo Gavazzi EM24)
 
-The GX performs two bulk reads per poll cycle:
+The GX performs two bulk FC03 reads per poll cycle plus an ID check:
 
 | FC03 request | Registers | Contents |
 |---|---|---|
@@ -63,7 +79,7 @@ The GX performs two bulk reads per poll cycle:
 | Second | 52–79 | Energy import/export totals |
 | ID check | 4096 | Device type — must return `0x000B` (EM24 DINAV53) |
 
-Key register addresses (all values in holding register space):
+Register map:
 
 | Reg | Description | Encoding | Scale |
 |-----|-------------|----------|-------|
@@ -83,33 +99,16 @@ Key register addresses (all values in holding register space):
 | 51 | Frequency | INT16 | ÷10 → Hz |
 | 52–53 | Energy import | UINT32 | ÷10 → Wh (HA kWh × 10000) |
 | 78–79 | Energy export | UINT32 | ÷10 → Wh (HA kWh × 10000) |
-| 4096 | Device type | UINT16 | fixed `0x000B` |
+| 4096 | Device type | UINT16 | fixed `0x000B` — set at boot |
 
 INT32 encoding: high 16-bit word at the lower register address (big-endian word order).
 
-### External component
+### Victron GX configuration
 
-`epiclabs-io/esphome-modbus-server` (GitHub) provides the Modbus RTU slave. Key API used in lambdas:
-- `id(victron_meter)->write_holding_register(addr, uint16_t value)`
-- `id(victron_meter)->read_holding_register(addr)` → `uint16_t`
-
-### Hardware wiring
-
-```
-ESP32           MAX485 module       Victron GX RS-485 port
-GPIO17 (TX) →  DI
-GPIO16 (RX) →  RO
-GPIO4       →  DE + RE (bridged)
-               A+              →   A+
-               B-              →   B-
-               VCC             ←   +5 V (from GX, pin 1)
-               GND             ←   GND (from GX, pin 2)
-```
-
-The Victron GX RS-485 Energy Meter port pinout (RJ12 or screw terminal depending on model): pin 1 = +5 V, pin 2 = GND, pin 3 = A+, pin 4 = B−.
+Venus OS connects to Modbus TCP energy meters via the `dbus-modbus-client` service. Add the ESP32 as a Carlo Gavazzi / AC sensor device at its LAN IP address, port 502, unit ID 1. On newer Venus OS versions this can be done from the GX touch UI; on older versions it may require SSH and editing `/etc/dbus-modbus-client.conf`.
 
 ## Debugging Tips
 
-- Use `esphome logs` and watch for `[modbus_server]` lines to confirm incoming FC 0x03 requests from the GX.
-- To test registers independently, use `mbpoll` on a Linux machine with a USB-RS485 adapter: `mbpoll -a 1 -r 0 -c 52 /dev/ttyUSB0` should return all measurement registers.
-- If the GX does not discover the meter, check: correct slave address, correct A+/B− polarity, and that register 4096 returns `0x000B`.
+- `esphome logs` — watch for `[modbus_tcp]` lines confirming incoming FC03 requests from the GX.
+- Test with `mbpoll` (Linux): `mbpoll -a 1 -r 0 -c 52 <ESP32_IP>` — should return all measurement registers.
+- If the GX ignores the meter, verify register 4096 returns `0x000B` and that the IP/port/unit ID match the GX configuration.
