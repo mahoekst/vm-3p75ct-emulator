@@ -13,7 +13,19 @@
       "Bash(curl -s \"https://api.github.com/repos/mahoekst/SunspecModbusServer/git/trees/HEAD?recursive=1\")",
       "Bash(curl:*)",
       "Bash(mkdir -p esphome/components docs .vscode)",
-      "Bash(git mv:*)"
+      "Bash(git mv:*)",
+      "WebFetch(domain:www.victronenergy.com)",
+      "WebFetch(domain:community.victronenergy.com)",
+      "Bash(git remote:*)",
+      "Bash(git branch:*)",
+      "Bash(git push:*)",
+      "Bash(esphome compile:*)",
+      "Bash(pip show:*)",
+      "Read(//Users/matthijshoekstra/.local/bin/**)",
+      "Read(//usr/local/bin/**)",
+      "Read(//opt/homebrew/bin/**)",
+      "Read(//opt/pmk/env/global/bin/**)",
+      "Read(//opt/homebrew/**)"
     ]
   }
 }
