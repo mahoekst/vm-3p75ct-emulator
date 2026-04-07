@@ -1,5 +1,6 @@
 #include "modbus_tcp_server.h"
 #include "esphome/core/log.h"
+#include "esphome/core/application.h"
 #include <WiFi.h>
 
 namespace esphome {
@@ -53,15 +54,19 @@ void ModbusTcpServer::loop() {
 
   WiFiClient client = server_->accept();
   if (client) {
-    ESP_LOGD(TAG, "Client connected: %s", client.remoteIP().toString().c_str());
+    ESP_LOGI(TAG, "Client connected: %s", client.remoteIP().toString().c_str());
     handle_client_(client);
     client.stop();
-    ESP_LOGD(TAG, "Client disconnected");
+    ESP_LOGI(TAG, "Client disconnected");
   }
 }
 
 // ---------------------------------------------------------------------------
 // Client handler — stays in loop while the connection is alive (up to 2 s).
+//
+// App.feed_wdt() is called between requests so that:
+//   - the ESPHome watchdog is fed (prevents reboot on long sessions)
+//   - all other ESPHome components (HA API, web server, sensors) keep running
 //
 // Timeout uses elapsed-time arithmetic (millis() - start) to avoid the
 // uint32_t rollover bug that occurs when millis() is near UINT32_MAX (~49 days).
@@ -77,7 +82,7 @@ void ModbusTcpServer::handle_client_(WiFiClient &client) {
         start = millis();  // reset idle timer only on a valid Modbus exchange
       }
     }
-    yield();
+    App.feed_wdt();  // run all ESPHome components + feed watchdog
   }
 }
 
