@@ -1,6 +1,5 @@
 #include "modbus_tcp_server.h"
 #include "esphome/core/log.h"
-#include "esphome/core/application.h"
 #include <WiFi.h>
 
 namespace esphome {
@@ -32,6 +31,14 @@ void ModbusTcpServer::start_server_() {
   ESP_LOGI(TAG, "Modbus TCP server listening on port %d (unit ID %d)", port_, unit_id_);
 }
 
+// ---------------------------------------------------------------------------
+// Main loop — non-blocking state machine.
+//
+// One client is handled at a time. The active client is stored in client_ so
+// that loop() returns to ESPHome between every request, keeping all other
+// components (HA API, web server, sensors) running normally.
+// ---------------------------------------------------------------------------
+
 void ModbusTcpServer::loop() {
   if (!server_)
     return;
@@ -46,43 +53,37 @@ void ModbusTcpServer::loop() {
   }
   wifi_was_connected_ = wifi_connected;
 
-  if (!wifi_connected)
+  if (!wifi_connected || !server_started_)
     return;
 
-  if (!server_started_)
-    return;
-
-  WiFiClient client = server_->accept();
-  if (client) {
-    ESP_LOGI(TAG, "Client connected: %s", client.remoteIP().toString().c_str());
-    handle_client_(client);
-    client.stop();
-    ESP_LOGI(TAG, "Client disconnected");
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Client handler — stays in loop while the connection is alive (up to 2 s).
-//
-// App.feed_wdt() is called between requests so that:
-//   - the ESPHome watchdog is fed (prevents reboot on long sessions)
-//   - all other ESPHome components (HA API, web server, sensors) keep running
-//
-// Timeout uses elapsed-time arithmetic (millis() - start) to avoid the
-// uint32_t rollover bug that occurs when millis() is near UINT32_MAX (~49 days).
-// ---------------------------------------------------------------------------
-
-void ModbusTcpServer::handle_client_(WiFiClient &client) {
-  client.setTimeout(kClientReadTimeoutMs);
-  uint32_t start = millis();
-
-  while (client.connected() && (millis() - start) < kSessionTimeoutMs) {
-    if (client.available() >= 7) {  // MBAP header (6) + unit ID (1)
-      if (handle_request_(client)) {
-        start = millis();  // reset idle timer only on a valid Modbus exchange
+  // ── Handle active client ──────────────────────────────────────────────────
+  if (client_.connected()) {
+    if ((millis() - client_start_ms_) >= kSessionTimeoutMs) {
+      client_.stop();
+      ESP_LOGI(TAG, "Client timed out, closing");
+      return;
+    }
+    if (client_.available() >= 7) {  // MBAP header (6) + unit ID (1)
+      if (handle_request_(client_)) {
+        client_start_ms_ = millis();  // reset idle timer on valid exchange
       }
     }
-    App.feed_wdt();  // run all ESPHome components + feed watchdog
+    return;  // yield control back to ESPHome main loop
+  }
+
+  // Client was active last iteration but has since disconnected
+  if (client_) {
+    client_.stop();
+    ESP_LOGI(TAG, "Client disconnected");
+  }
+
+  // ── Accept new client ─────────────────────────────────────────────────────
+  WiFiClient incoming = server_->accept();
+  if (incoming) {
+    incoming.setTimeout(kClientReadTimeoutMs);
+    client_ = incoming;
+    client_start_ms_ = millis();
+    ESP_LOGI(TAG, "Client connected: %s", client_.remoteIP().toString().c_str());
   }
 }
 

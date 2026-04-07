@@ -33,11 +33,14 @@ class ModbusTcpServer : public Component {
   // Set to true once server_->begin() has succeeded at least once
   bool server_started_{false};
 
+  // Active client state — persists across loop() calls (non-blocking design)
+  WiFiClient client_;
+  uint32_t client_start_ms_{0};
+
   // Sparse register map — only allocated addresses consume memory
   std::map<uint16_t, uint16_t> registers_;
 
   void start_server_();
-  void handle_client_(WiFiClient &client);
   // Returns true if a valid Modbus frame was received and responded to
   bool handle_request_(WiFiClient &client);
   void send_exception_(WiFiClient &client, uint16_t transaction_id,
