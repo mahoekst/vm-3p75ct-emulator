@@ -63,6 +63,10 @@ ota:
   - platform: esphome
     password: !secret esphome_ota_password
 
+web_server:
+  port: 80
+  version: 3
+
 # ── Modbus TCP server ──────────────────────────────────────────────────────────
 # Uses component from local filesystem — edit components/ and recompile directly.
 external_components:
@@ -98,6 +102,7 @@ sensor:
   # ── Voltages (INT32, ÷10, V) ─────────────────────────────────────────────
   - platform: homeassistant
     id: l1_voltage
+    name: "L1 Voltage"
     entity_id: ${ha_l1_voltage}
     on_value:
       then:
@@ -108,6 +113,7 @@ sensor:
 
   - platform: homeassistant
     id: l2_voltage
+    name: "L2 Voltage"
     entity_id: ${ha_l2_voltage}
     on_value:
       then:
@@ -118,6 +124,7 @@ sensor:
 
   - platform: homeassistant
     id: l3_voltage
+    name: "L3 Voltage"
     entity_id: ${ha_l3_voltage}
     on_value:
       then:
@@ -129,6 +136,7 @@ sensor:
   # ── Phase-to-phase voltages (INT32, ÷10, V) ─────────────────────────────
   - platform: homeassistant
     id: l1l2_voltage
+    name: "L1-L2 Voltage"
     entity_id: ${ha_l1l2_voltage}
     on_value:
       then:
@@ -139,6 +147,7 @@ sensor:
 
   - platform: homeassistant
     id: l2l3_voltage
+    name: "L2-L3 Voltage"
     entity_id: ${ha_l2l3_voltage}
     on_value:
       then:
@@ -149,6 +158,7 @@ sensor:
 
   - platform: homeassistant
     id: l3l1_voltage
+    name: "L3-L1 Voltage"
     entity_id: ${ha_l3l1_voltage}
     on_value:
       then:
@@ -160,6 +170,7 @@ sensor:
   # ── Currents (INT32, ÷1000, A) ───────────────────────────────────────────
   - platform: homeassistant
     id: l1_current
+    name: "L1 Current"
     entity_id: ${ha_l1_current}
     on_value:
       then:
@@ -170,6 +181,7 @@ sensor:
 
   - platform: homeassistant
     id: l2_current
+    name: "L2 Current"
     entity_id: ${ha_l2_current}
     on_value:
       then:
@@ -180,6 +192,7 @@ sensor:
 
   - platform: homeassistant
     id: l3_current
+    name: "L3 Current"
     entity_id: ${ha_l3_current}
     on_value:
       then:
@@ -193,6 +206,7 @@ sensor:
   # Total power (regs 40–41) is recalculated on every phase update.
   - platform: homeassistant
     id: l1_power
+    name: "L1 Power"
     entity_id: ${ha_l1_power}
     on_value:
       then:
@@ -207,6 +221,7 @@ sensor:
 
   - platform: homeassistant
     id: l2_power
+    name: "L2 Power"
     entity_id: ${ha_l2_power}
     on_value:
       then:
@@ -221,6 +236,7 @@ sensor:
 
   - platform: homeassistant
     id: l3_power
+    name: "L3 Power"
     entity_id: ${ha_l3_power}
     on_value:
       then:
@@ -236,6 +252,7 @@ sensor:
   # ── Frequency (INT16, ÷10, Hz) ───────────────────────────────────────────
   - platform: homeassistant
     id: grid_frequency
+    name: "Grid Frequency"
     entity_id: ${ha_frequency}
     on_value:
       then:
@@ -246,6 +263,7 @@ sensor:
   # raw = kWh × 1000 (→ Wh) × 10 (→ 0.1 Wh register units) = kWh × 10000
   - platform: homeassistant
     id: energy_import
+    name: "Energy Import"
     entity_id: ${ha_energy_import}
     on_value:
       then:
@@ -256,6 +274,7 @@ sensor:
 
   - platform: homeassistant
     id: energy_export
+    name: "Energy Export"
     entity_id: ${ha_energy_export}
     on_value:
       then:
