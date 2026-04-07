@@ -8,13 +8,16 @@ CONF_UNIT_ID = "unit_id"
 modbus_tcp_server_ns = cg.esphome_ns.namespace("modbus_tcp_server")
 ModbusTcpServer = modbus_tcp_server_ns.class_("ModbusTcpServer", cg.Component)
 
-CONFIG_SCHEMA = cv.Schema(
-    {
-        cv.GenerateID(): cv.declare_id(ModbusTcpServer),
-        cv.Optional(CONF_PORT, default=502): cv.port,
-        cv.Optional(CONF_UNIT_ID, default=1): cv.int_range(min=1, max=247),
-    }
-).extend(cv.COMPONENT_SCHEMA)
+CONFIG_SCHEMA = cv.All(
+    cv.Schema(
+        {
+            cv.GenerateID(): cv.declare_id(ModbusTcpServer),
+            cv.Optional(CONF_PORT, default=502): cv.port,
+            cv.Optional(CONF_UNIT_ID, default=1): cv.int_range(min=1, max=247),
+        }
+    ).extend(cv.COMPONENT_SCHEMA),
+    cv.only_on_esp32,
+)
 
 
 async def to_code(config):
