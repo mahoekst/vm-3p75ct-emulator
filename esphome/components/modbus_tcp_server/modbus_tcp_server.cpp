@@ -38,7 +38,7 @@ void ModbusTcpServer::loop() {
   if (!wifi_connected)
     return;
 
-  WiFiClient client = server_->available();
+  WiFiClient client = server_->accept();
   if (client) {
     ESP_LOGD(TAG, "Client connected: %s", client.remoteIP().toString().c_str());
     handle_client_(client);
