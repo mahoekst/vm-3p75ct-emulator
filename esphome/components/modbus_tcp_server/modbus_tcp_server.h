@@ -30,6 +30,8 @@ class ModbusTcpServer : public Component {
 
   // Track WiFi state to detect reconnects and restart the server socket
   bool wifi_was_connected_{false};
+  // Set to true once server_->begin() has succeeded at least once
+  bool server_started_{false};
 
   // Sparse register map — only allocated addresses consume memory
   std::map<uint16_t, uint16_t> registers_;

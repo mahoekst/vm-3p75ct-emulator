@@ -7,17 +7,27 @@ namespace modbus_tcp_server {
 
 static const char *TAG = "modbus_tcp";
 
+// Per-call read timeout for client.readBytes() — must be short enough that a
+// stale/broken connection doesn't block the ESPHome loop for too long.
+static const uint32_t kClientReadTimeoutMs = 200;
+
+// Total session timeout — how long an idle connected client is kept alive.
+static const uint32_t kSessionTimeoutMs = 2000;
+
 // ---------------------------------------------------------------------------
 // Lifecycle
 // ---------------------------------------------------------------------------
 
 void ModbusTcpServer::setup() {
   server_ = new WiFiServer(port_);
-  start_server_();
+  // Don't call begin() here — WiFi may not be connected yet.
+  // start_server_() is called by loop() on first WiFi connect.
 }
 
 void ModbusTcpServer::start_server_() {
+  server_->stop();   // release any existing socket before re-binding
   server_->begin();
+  server_started_ = true;
   ESP_LOGI(TAG, "Modbus TCP server listening on port %d (unit ID %d)", port_, unit_id_);
 }
 
@@ -38,6 +48,9 @@ void ModbusTcpServer::loop() {
   if (!wifi_connected)
     return;
 
+  if (!server_started_)
+    return;
+
   WiFiClient client = server_->accept();
   if (client) {
     ESP_LOGD(TAG, "Client connected: %s", client.remoteIP().toString().c_str());
@@ -55,11 +68,10 @@ void ModbusTcpServer::loop() {
 // ---------------------------------------------------------------------------
 
 void ModbusTcpServer::handle_client_(WiFiClient &client) {
-  client.setTimeout(200);  // ms — readBytes() per-call timeout
+  client.setTimeout(kClientReadTimeoutMs);
   uint32_t start = millis();
-  const uint32_t kTimeoutMs = 2000;
 
-  while (client.connected() && (millis() - start) < kTimeoutMs) {
+  while (client.connected() && (millis() - start) < kSessionTimeoutMs) {
     if (client.available() >= 7) {  // MBAP header (6) + unit ID (1)
       if (handle_request_(client)) {
         start = millis();  // reset idle timer only on a valid Modbus exchange
