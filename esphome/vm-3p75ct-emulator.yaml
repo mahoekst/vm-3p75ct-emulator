@@ -1,6 +1,5 @@
-# ── Home Assistant / production version ───────────────────────────────────────
-# Paste this file into Home Assistant → ESPHome.
-# The component is fetched automatically from GitHub.
+# ── Production version — paste this file into Home Assistant ──────────────────
+# Component is fetched from GitHub; no local files needed.
 # For local development use vm-3p75ct-emulator-dev.yaml instead.
 
 substitutions:
@@ -48,7 +47,7 @@ wifi:
   password: !secret wifi_password
   ap:
     ssid: "${device_name} Fallback"
-    password: !secret ota_password
+    password: !secret esphome_ota_password
 
 captive_portal:
 
@@ -57,14 +56,14 @@ logger:
 
 api:
   encryption:
-    key: !secret api_encryption_key
+    key: !secret esphome_api_key
 
 ota:
   - platform: esphome
-    password: !secret ota_password
+    password: !secret esphome_ota_password
 
 # ── Modbus TCP server ──────────────────────────────────────────────────────────
-# Fetches the custom component automatically from GitHub.
+# Component is fetched from GitHub on first compile.
 external_components:
   - source:
       type: git

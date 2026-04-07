@@ -48,7 +48,7 @@ wifi:
   password: !secret wifi_password
   ap:
     ssid: "${device_name} Fallback"
-    password: !secret ota_password
+    password: !secret esphome_ota_password
 
 captive_portal:
 
@@ -57,11 +57,11 @@ logger:
 
 api:
   encryption:
-    key: !secret api_encryption_key
+    key: !secret esphome_api_key
 
 ota:
   - platform: esphome
-    password: !secret ota_password
+    password: !secret esphome_ota_password
 
 # ── Modbus TCP server ──────────────────────────────────────────────────────────
 # Uses component from local filesystem — edit components/ and recompile directly.
