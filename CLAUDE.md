@@ -4,18 +4,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-An ESPHome firmware for an ESP32 that emulates a **Victron VM-3P75CT** energy meter over **Modbus TCP** (WiFi, port 502). The Victron GX device polls the ESP32 as if it were a real Carlo Gavazzi EM24 DINAV53 meter. Energy readings come from Home Assistant sensor entities via the ESPHome native API. No RS-485 hardware required.
+An ESPHome firmware for an ESP32 that emulates a **Victron VM-3P75CT** energy meter over **Modbus TCP** (WiFi, port 502). The Victron GX device polls the ESP32 as if it were a real Carlo Gavazzi EM24 DINAV53 meter. Energy readings come from Home Assistant sensor entities via the ESPHome native API.
 
 ## ESPHome Commands
 
-All commands run from the repo root. Use `vm-3p75ct-emulator-dev.yaml` for local work.
+All commands run from the repo root. ESPHome is not on PATH — use `python3 -m esphome`. Use `vm-3p75ct-emulator-dev.yaml` for local work.
 
 ```bash
-esphome compile esphome/vm-3p75ct-emulator-dev.yaml   # validate only
-esphome run     esphome/vm-3p75ct-emulator-dev.yaml   # compile + flash + monitor
-esphome upload  esphome/vm-3p75ct-emulator-dev.yaml   # compile + flash (no monitor)
-esphome logs    esphome/vm-3p75ct-emulator-dev.yaml   # stream logs over WiFi
-esphome gen-api-key                                    # generate API encryption key
+python3 -m esphome compile esphome/vm-3p75ct-emulator-dev.yaml   # validate only
+python3 -m esphome run     esphome/vm-3p75ct-emulator-dev.yaml   # compile + flash + monitor
+python3 -m esphome upload  esphome/vm-3p75ct-emulator-dev.yaml   # compile + flash (no monitor)
+python3 -m esphome logs    esphome/vm-3p75ct-emulator-dev.yaml   # stream logs over WiFi
+python3 -m esphome gen-api-key                                    # generate API encryption key
 ```
 
 ## Project Structure

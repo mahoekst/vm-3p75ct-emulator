@@ -19,23 +19,23 @@ vm-3p75ct-emulator/
 
 ## ESPHome commands
 
-Run these from the repo root, or `cd esphome/` first and drop the `esphome/` path prefix.
+Run from the repo root. ESPHome is invoked via `python3 -m esphome` (not on PATH directly).
 
 ```bash
 # Validate config — no device needed, catches YAML and C++ errors
-esphome compile esphome/vm-3p75ct-emulator-dev.yaml
+python3 -m esphome compile esphome/vm-3p75ct-emulator-dev.yaml
 
 # Compile + flash over USB
-esphome upload esphome/vm-3p75ct-emulator-dev.yaml
+python3 -m esphome upload esphome/vm-3p75ct-emulator-dev.yaml
 
 # Compile + flash + open serial monitor in one step
-esphome run esphome/vm-3p75ct-emulator-dev.yaml
+python3 -m esphome run esphome/vm-3p75ct-emulator-dev.yaml
 
 # Stream logs over WiFi (device must already be on the network)
-esphome logs esphome/vm-3p75ct-emulator-dev.yaml
+python3 -m esphome logs esphome/vm-3p75ct-emulator-dev.yaml
 
 # Generate a new API encryption key
-esphome gen-api-key
+python3 -m esphome gen-api-key
 ```
 
 ## Dev vs production YAML
@@ -72,3 +72,4 @@ The `modbus_tcp_server` component (`esphome/components/modbus_tcp_server/`) impl
 - Supports FC 0x03 (Read Holding Registers) only — the only function code the Victron GX uses
 - Registers stored in a `std::map<uint16_t, uint16_t>` — sparse, zero pre-allocation overhead
 - Public API: `write_holding_register(addr, value)` / `read_holding_register(addr)`
+- Declares `WiFi` as a library dependency in `__init__.py` for compatibility with newer ESPHome versions

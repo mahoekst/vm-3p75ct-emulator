@@ -39,8 +39,8 @@ Copy `esphome/secrets.yaml.example` to `esphome/secrets.yaml` (git-ignored) and 
 |-----|-------------|
 | `wifi_ssid` | WiFi network name |
 | `wifi_password` | WiFi password |
-| `api_encryption_key` | ESPHome API key — generate with `esphome gen-api-key` |
-| `ota_password` | Password for over-the-air firmware updates |
+| `esphome_api_key` | ESPHome API key — generate with `python3 -m esphome gen-api-key` |
+| `esphome_ota_password` | Password for over-the-air firmware updates |
 
 ## Meter role
 

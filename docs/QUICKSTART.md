@@ -16,7 +16,7 @@ cp esphome/secrets.yaml.example esphome/secrets.yaml
 Edit `esphome/secrets.yaml` with your WiFi credentials and a generated API key:
 
 ```bash
-esphome gen-api-key   # paste the output as api_encryption_key
+python3 -m esphome gen-api-key   # paste the output as esphome_api_key
 ```
 
 ## 2. Configure entity IDs
@@ -28,7 +28,7 @@ See [CONFIGURATION.md](CONFIGURATION.md) for details on each field.
 ## 3. Flash the ESP32 (first time, USB)
 
 ```bash
-esphome run esphome/vm-3p75ct-emulator-dev.yaml
+python3 -m esphome run esphome/vm-3p75ct-emulator-dev.yaml
 ```
 
 After the first flash, subsequent updates can be done over WiFi (OTA).

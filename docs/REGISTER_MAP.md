@@ -6,7 +6,7 @@ The VM-3P75CT is an OEM of the **Carlo Gavazzi EM24 DINAV53D2X**. The Victron GX
 
 | Parameter | Value |
 |-----------|-------|
-| Protocol | Modbus TCP (this emulator) / Modbus RTU on real device |
+| Protocol | Modbus TCP |
 | Port | 502 |
 | Unit ID | 1 (default) |
 | Function code | FC 0x03 — Read Holding Registers |
