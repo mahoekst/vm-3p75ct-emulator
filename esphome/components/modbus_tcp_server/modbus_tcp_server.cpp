@@ -1,6 +1,6 @@
 #include "modbus_tcp_server.h"
 #include "esphome/core/log.h"
-#include <WiFi.h>
+#include "esphome/components/network/util.h"
 
 namespace esphome {
 namespace modbus_tcp_server {
@@ -46,7 +46,7 @@ void ModbusTcpServer::loop() {
   // Restart the server socket when WiFi reconnects after a drop.
   // On ESP32 Arduino the lwIP stack resets on reconnect, invalidating the
   // existing server socket — begin() must be called again.
-  bool wifi_connected = (WiFi.status() == WL_CONNECTED);
+  bool wifi_connected = network::is_connected();
   if (wifi_connected && !wifi_was_connected_) {
     ESP_LOGI(TAG, "WiFi (re)connected — restarting Modbus TCP server");
     start_server_();

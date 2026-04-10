@@ -25,5 +25,4 @@ async def to_code(config):
     await cg.register_component(var, config)
     cg.add(var.set_port(config[CONF_PORT]))
     cg.add(var.set_unit_id(config[CONF_UNIT_ID]))
-    if CORE.is_esp32:
-        cg.add_library("WiFi", None)
+    cg.add_library("WiFi", None)
