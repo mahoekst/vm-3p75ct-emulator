@@ -1,6 +1,13 @@
-# EM24 Modbus Register Map
+# VM-3P75CT Native Victron Modbus Register Map
 
-The VM-3P75CT is an OEM of the **Carlo Gavazzi EM24 DINAV53D2X**. The Victron GX driver (`dbus-cgwacs`) polls using the EM24 register layout below.
+The ESP32 emulates a **Victron Energy VM-3P75CT** (product ID `0xa1b1`) using the
+native Victron register map defined in
+[`dbus-modbus-client/victron_em.py`](https://github.com/victronenergy/dbus-modbus-client/blob/master/victron_em.py)
+(class `VE_Meter_A1B1`).
+
+> **Important:** This is NOT the Carlo Gavazzi EM24 register map. The VM-3P75CT
+> uses its own native Victron protocol. Always refer to this document and
+> `victron_em.py` — do not use EM24 documentation.
 
 ## Physical layer
 
@@ -9,95 +16,63 @@ The VM-3P75CT is an OEM of the **Carlo Gavazzi EM24 DINAV53D2X**. The Victron GX
 | Protocol | Modbus TCP |
 | Port | 502 |
 | Unit ID | 1 (default) |
-| Function code | FC 0x03 — Read Holding Registers |
+| Function codes | FC 0x03 (Read Holding Registers), FC 0x04 (Read Input Registers) |
 
-## GX poll pattern
+## Identification registers (written at boot)
 
-The GX issues two bulk FC03 reads per cycle:
+| Reg (hex) | Value | Description |
+|-----------|-------|-------------|
+| 0x1000 | 0xa1b1 | Product ID — VM-3P75CT |
+| 0x1009 | 0x0001 | Firmware version high (major.minor = 0.1) |
+| 0x100a | 0x0900 | Firmware version low (patch.build = 9.0) |
+| 0x100b | 0x0001 | Hardware version |
+| 0x2000 | 0x0003 | Phase config: 3 = three-phase L1+L2+L3 |
+| 0x2001 | 0x0000 | Role: 0 = grid meter |
+| 0x3038 | 0x0000 | Error code: 0 = no error |
 
-| Request | Registers | Contents |
-|---------|-----------|----------|
-| 1 | 0–51 | Voltages, currents, powers, power factor, frequency |
-| 2 | 52–79 | Energy totals |
-| ID check | 4096 | Device type (once on startup) |
+The Cerbo GX reads `0x1000` to confirm the device is a VM-3P75CT before
+accepting it. Firmware version ≥ 0.1.9.0 enables all data paths (current,
+line-to-line voltage, power factor).
 
 ## Register encoding
 
-All multi-byte values use **big-endian word order**: the high 16-bit word is at the lower register address.
+All multi-word values use **big-endian word order**: the high 16-bit word is at
+the lower register address.
 
-- **INT32** — signed 32-bit integer in two consecutive registers
-- **UINT32** — unsigned 32-bit integer in two consecutive registers
-- **INT16** — signed 16-bit integer in a single register
+| Type | Size | Description |
+|------|------|-------------|
+| s16 | 1 reg | Signed 16-bit integer |
+| s32b | 2 regs | Signed 32-bit, big-endian word order |
+| u16 | 1 reg | Unsigned 16-bit integer |
+| u32b | 2 regs | Unsigned 32-bit, big-endian word order |
 
-## Voltage
+## Total registers
 
-| Reg (dec) | Description | Type | Scale | Unit |
-|-----------|-------------|------|-------|------|
-| 0–1 | Voltage L1-N | INT32 | ÷10 | V |
-| 2–3 | Voltage L2-N | INT32 | ÷10 | V |
-| 4–5 | Voltage L3-N | INT32 | ÷10 | V |
-| 6–7 | Voltage L1-L2 | INT32 | ÷10 | V |
-| 8–9 | Voltage L2-L3 | INT32 | ÷10 | V |
-| 10–11 | Voltage L3-L1 | INT32 | ÷10 | V |
+| Reg (hex) | Type | Scale | Unit | Description |
+|-----------|------|-------|------|-------------|
+| 0x3032 | u16 | ÷100 | Hz | Frequency |
+| 0x3034–35 | u32b | ÷100 | kWh | Total energy forward (import) |
+| 0x3036–37 | u32b | ÷100 | kWh | Total energy reverse (export) |
+| 0x3038 | u16 | — | — | Error code |
+| 0x3080–81 | s32b | ÷1 | W | Total active power (sum of phases) |
 
-## Current
+## Per-phase registers
 
-| Reg | Description | Type | Scale | Unit |
-|-----|-------------|------|-------|------|
-| 12–13 | Current L1 | INT32 | ÷1000 | A |
-| 14–15 | Current L2 | INT32 | ÷1000 | A |
-| 16–17 | Current L3 | INT32 | ÷1000 | A |
+Phase base address: `base = 0x3040 + 8 × (n−1)`
+Phase power address: `power = 0x3082 + 4 × (n−1)`
 
-## Active power
+| Phase | Voltage (s16 ÷100 V) | Current (s16 ÷100 A) | L-L Voltage (s16 ÷100 V) | Energy Fwd (u32b ÷100 kWh) | Energy Rev (u32b ÷100 kWh) | Power (s32b ÷1 W) |
+|-------|----------------------|----------------------|--------------------------|-----------------------------|-----------------------------|-------------------|
+| L1 | 0x3040 | 0x3041 | 0x3046 | 0x3042–43 | 0x3044–45 | 0x3082–83 |
+| L2 | 0x3048 | 0x3049 | 0x304e | 0x304a–4b | 0x304c–4d | 0x3086–87 |
+| L3 | 0x3050 | 0x3051 | 0x3056 | 0x3052–53 | 0x3054–55 | 0x308a–8b |
 
-| Reg | Description | Type | Scale | Unit |
-|-----|-------------|------|-------|------|
-| 18–19 | Active Power L1 | INT32 | ÷10 | W |
-| 20–21 | Active Power L2 | INT32 | ÷10 | W |
-| 22–23 | Active Power L3 | INT32 | ÷10 | W |
-| 40–41 | Total Active Power | INT32 | ÷10 | W |
+## Lambda scaling summary
 
-Positive = import (load consuming), negative = export (feed-in to grid).
-
-## Reactive and apparent power (not mapped — registers return 0)
-
-| Reg | Description | Type | Scale | Unit |
-|-----|-------------|------|-------|------|
-| 24–25 | Reactive Power L1 | INT32 | ÷10 | VAr |
-| 26–27 | Reactive Power L2 | INT32 | ÷10 | VAr |
-| 28–29 | Reactive Power L3 | INT32 | ÷10 | VAr |
-| 30–31 | Apparent Power L1 | INT32 | ÷10 | VA |
-| 32–33 | Apparent Power L2 | INT32 | ÷10 | VA |
-| 34–35 | Apparent Power L3 | INT32 | ÷10 | VA |
-| 42–43 | Total Reactive Power | INT32 | ÷10 | VAr |
-| 46–47 | Total Apparent Power | INT32 | ÷10 | VA |
-
-## Power factor and frequency
-
-| Reg | Description | Type | Scale | Unit |
-|-----|-------------|------|-------|------|
-| 44 | Power Factor L1 | INT16 | ÷1000 | — |
-| 45 | Power Factor L2 | INT16 | ÷1000 | — |
-| 46 | Power Factor L3 | INT16 | ÷1000 | — |
-| 47 | Total Power Factor | INT16 | ÷1000 | — |
-| 51 | Frequency | INT16 | ÷10 | Hz |
-
-## Energy
-
-Register unit is **0.1 Wh** (scale ÷10 → Wh). HA sensors in kWh are multiplied by 10 000.
-
-| Reg | Description | Type | Scale | Unit |
-|-----|-------------|------|-------|------|
-| 52–53 | Total Energy Import | UINT32 | ÷10 | Wh |
-| 54–55 | Energy Import L1 | UINT32 | ÷10 | Wh |
-| 56–57 | Energy Import L2 | UINT32 | ÷10 | Wh |
-| 58–59 | Energy Import L3 | UINT32 | ÷10 | Wh |
-| 78–79 | Total Energy Export | UINT32 | ÷10 | Wh |
-
-## Device identification
-
-| Reg | Description | Value |
-|-----|-------------|-------|
-| 4096 | Device type | `0x000B` = EM24 DINAV53 |
-
-The GX reads this register once on startup to confirm it is talking to a Carlo Gavazzi EM24 device. It is pre-populated at boot via the ESPHome `on_boot` automation.
+| Sensor (HA unit) | Register value written |
+|------------------|----------------------|
+| Voltage V | `(int16_t)(x * 100)` |
+| Current A | `(int16_t)(x * 100)` |
+| Power W | `(int32_t)(x)` — integer watts, no scaling |
+| Frequency Hz | `(uint16_t)(x * 100)` |
+| Energy kWh | `(uint32_t)(x * 100)` |

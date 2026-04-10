@@ -34,9 +34,30 @@ esphome:
     priority: 200   # after WiFi + component setup
     then:
       - lambda: |-
-          // Device type register — must return 0x000B (EM24 DINAV53).
-          // The Victron GX reads reg 4096 before accepting the meter.
-          id(victron_meter)->write_holding_register(4096, 0x000B);
+          // ── Native Victron VM-3P75CT identification registers ──────────────
+          // Source: github.com/victronenergy/dbus-modbus-client/victron_em.py
+          // The Cerbo GX reads 0x1000 to confirm product ID before accepting.
+
+          // 0x1000: Product ID = 0xa1b1 (VM-3P75CT)
+          id(victron_meter)->write_holding_register(0x1000, 0xa1b1);
+
+          // 0x1009-0x100a: Firmware version 0.1.9.0 (enables all data paths)
+          //   High word = major.minor = 0x0001
+          //   Low  word = patch.build = 0x0900
+          id(victron_meter)->write_holding_register(0x1009, 0x0001);
+          id(victron_meter)->write_holding_register(0x100a, 0x0900);
+
+          // 0x100b: Hardware version
+          id(victron_meter)->write_holding_register(0x100b, 0x0001);
+
+          // 0x2000: Phase config = 3 → three-phase L1+L2+L3
+          id(victron_meter)->write_holding_register(0x2000, 0x0003);
+
+          // 0x2001: Role = 0 → grid meter
+          id(victron_meter)->write_holding_register(0x2001, 0x0000);
+
+          // 0x3038: Error code = 0 (no error)
+          id(victron_meter)->write_holding_register(0x3038, 0x0000);
 
 esp32:
   board: esp32dev
@@ -93,13 +114,23 @@ globals:
     initial_value: "0"
 
 # ── HA sensors → Modbus holding registers ─────────────────────────────────────
+# Native Victron VM-3P75CT register map (VE_Meter_A1B1, product ID 0xa1b1).
+# Source: github.com/victronenergy/dbus-modbus-client/victron_em.py
+#
 # Register encoding:
-#   INT32  → two consecutive 16-bit words, high word at lower address (big-endian)
-#   UINT32 → same layout, unsigned
-#   INT16  → single 16-bit word
+#   s16   → single signed 16-bit word
+#   s32b  → two signed 16-bit words, high word at lower address (big-endian)
+#   u32b  → same layout, unsigned
+#
+# Scaling (what the Cerbo expects after dividing the raw register value):
+#   Voltage   s16  ÷100 → V    write: x * 100
+#   Current   s16  ÷100 → A    write: x * 100
+#   Power     s32b ÷1   → W    write: x (integer watts)
+#   Frequency u16  ÷100 → Hz   write: x * 100
+#   Energy    u32b ÷100 → kWh  write: x * 100  (HA sensor already in kWh)
 #
 sensor:
-  # ── Voltages (INT32, ÷10, V) ─────────────────────────────────────────────
+  # ── Phase-to-neutral voltages (s16, ÷100, V) ─────────────────────────────
   - platform: homeassistant
     id: l1_voltage
     name: "L1 Voltage"
@@ -107,9 +138,7 @@ sensor:
     on_value:
       then:
         - lambda: |-
-            int32_t v = (int32_t)(x * 10.0f);
-            id(victron_meter)->write_holding_register(0, (uint16_t)((v >> 16) & 0xFFFF));
-            id(victron_meter)->write_holding_register(1, (uint16_t)(v & 0xFFFF));
+            id(victron_meter)->write_holding_register(0x3040, (uint16_t)(int16_t)(x * 100.0f));
 
   - platform: homeassistant
     id: l2_voltage
@@ -118,9 +147,7 @@ sensor:
     on_value:
       then:
         - lambda: |-
-            int32_t v = (int32_t)(x * 10.0f);
-            id(victron_meter)->write_holding_register(2, (uint16_t)((v >> 16) & 0xFFFF));
-            id(victron_meter)->write_holding_register(3, (uint16_t)(v & 0xFFFF));
+            id(victron_meter)->write_holding_register(0x3048, (uint16_t)(int16_t)(x * 100.0f));
 
   - platform: homeassistant
     id: l3_voltage
@@ -129,11 +156,9 @@ sensor:
     on_value:
       then:
         - lambda: |-
-            int32_t v = (int32_t)(x * 10.0f);
-            id(victron_meter)->write_holding_register(4, (uint16_t)((v >> 16) & 0xFFFF));
-            id(victron_meter)->write_holding_register(5, (uint16_t)(v & 0xFFFF));
+            id(victron_meter)->write_holding_register(0x3050, (uint16_t)(int16_t)(x * 100.0f));
 
-  # ── Phase-to-phase voltages (INT32, ÷10, V) ─────────────────────────────
+  # ── Line-to-line voltages (s16, ÷100, V) — VoltageLineToLine per phase ──
   - platform: homeassistant
     id: l1l2_voltage
     name: "L1-L2 Voltage"
@@ -141,9 +166,7 @@ sensor:
     on_value:
       then:
         - lambda: |-
-            int32_t v = (int32_t)(x * 10.0f);
-            id(victron_meter)->write_holding_register(6, (uint16_t)((v >> 16) & 0xFFFF));
-            id(victron_meter)->write_holding_register(7, (uint16_t)(v & 0xFFFF));
+            id(victron_meter)->write_holding_register(0x3046, (uint16_t)(int16_t)(x * 100.0f));
 
   - platform: homeassistant
     id: l2l3_voltage
@@ -152,9 +175,7 @@ sensor:
     on_value:
       then:
         - lambda: |-
-            int32_t v = (int32_t)(x * 10.0f);
-            id(victron_meter)->write_holding_register(8, (uint16_t)((v >> 16) & 0xFFFF));
-            id(victron_meter)->write_holding_register(9, (uint16_t)(v & 0xFFFF));
+            id(victron_meter)->write_holding_register(0x304e, (uint16_t)(int16_t)(x * 100.0f));
 
   - platform: homeassistant
     id: l3l1_voltage
@@ -163,11 +184,9 @@ sensor:
     on_value:
       then:
         - lambda: |-
-            int32_t v = (int32_t)(x * 10.0f);
-            id(victron_meter)->write_holding_register(10, (uint16_t)((v >> 16) & 0xFFFF));
-            id(victron_meter)->write_holding_register(11, (uint16_t)(v & 0xFFFF));
+            id(victron_meter)->write_holding_register(0x3056, (uint16_t)(int16_t)(x * 100.0f));
 
-  # ── Currents (INT32, ÷1000, A) ───────────────────────────────────────────
+  # ── Currents (s16, ÷100, A) ──────────────────────────────────────────────
   - platform: homeassistant
     id: l1_current
     name: "L1 Current"
@@ -175,9 +194,7 @@ sensor:
     on_value:
       then:
         - lambda: |-
-            int32_t v = (int32_t)(x * 1000.0f);
-            id(victron_meter)->write_holding_register(12, (uint16_t)((v >> 16) & 0xFFFF));
-            id(victron_meter)->write_holding_register(13, (uint16_t)(v & 0xFFFF));
+            id(victron_meter)->write_holding_register(0x3041, (uint16_t)(int16_t)(x * 100.0f));
 
   - platform: homeassistant
     id: l2_current
@@ -186,9 +203,7 @@ sensor:
     on_value:
       then:
         - lambda: |-
-            int32_t v = (int32_t)(x * 1000.0f);
-            id(victron_meter)->write_holding_register(14, (uint16_t)((v >> 16) & 0xFFFF));
-            id(victron_meter)->write_holding_register(15, (uint16_t)(v & 0xFFFF));
+            id(victron_meter)->write_holding_register(0x3049, (uint16_t)(int16_t)(x * 100.0f));
 
   - platform: homeassistant
     id: l3_current
@@ -197,13 +212,11 @@ sensor:
     on_value:
       then:
         - lambda: |-
-            int32_t v = (int32_t)(x * 1000.0f);
-            id(victron_meter)->write_holding_register(16, (uint16_t)((v >> 16) & 0xFFFF));
-            id(victron_meter)->write_holding_register(17, (uint16_t)(v & 0xFFFF));
+            id(victron_meter)->write_holding_register(0x3051, (uint16_t)(int16_t)(x * 100.0f));
 
-  # ── Active power per phase (INT32, ÷10, W) ───────────────────────────────
+  # ── Active power per phase (s32b, ÷1, W) ─────────────────────────────────
   # Positive = import (consuming), negative = export (feeding in).
-  # Total power (regs 40–41) is recalculated on every phase update.
+  # Total power (0x3080-81) is recalculated on every phase update.
   - platform: homeassistant
     id: l1_power
     name: "L1 Power"
@@ -211,13 +224,13 @@ sensor:
     on_value:
       then:
         - lambda: |-
-            id(raw_l1_power) = (int32_t)(x * 10.0f);
+            id(raw_l1_power) = (int32_t)(x);
             int32_t v = id(raw_l1_power);
-            id(victron_meter)->write_holding_register(18, (uint16_t)((v >> 16) & 0xFFFF));
-            id(victron_meter)->write_holding_register(19, (uint16_t)(v & 0xFFFF));
+            id(victron_meter)->write_holding_register(0x3082, (uint16_t)((v >> 16) & 0xFFFF));
+            id(victron_meter)->write_holding_register(0x3083, (uint16_t)(v & 0xFFFF));
             int32_t total = id(raw_l1_power) + id(raw_l2_power) + id(raw_l3_power);
-            id(victron_meter)->write_holding_register(40, (uint16_t)((total >> 16) & 0xFFFF));
-            id(victron_meter)->write_holding_register(41, (uint16_t)(total & 0xFFFF));
+            id(victron_meter)->write_holding_register(0x3080, (uint16_t)((total >> 16) & 0xFFFF));
+            id(victron_meter)->write_holding_register(0x3081, (uint16_t)(total & 0xFFFF));
 
   - platform: homeassistant
     id: l2_power
@@ -226,13 +239,13 @@ sensor:
     on_value:
       then:
         - lambda: |-
-            id(raw_l2_power) = (int32_t)(x * 10.0f);
+            id(raw_l2_power) = (int32_t)(x);
             int32_t v = id(raw_l2_power);
-            id(victron_meter)->write_holding_register(20, (uint16_t)((v >> 16) & 0xFFFF));
-            id(victron_meter)->write_holding_register(21, (uint16_t)(v & 0xFFFF));
+            id(victron_meter)->write_holding_register(0x3086, (uint16_t)((v >> 16) & 0xFFFF));
+            id(victron_meter)->write_holding_register(0x3087, (uint16_t)(v & 0xFFFF));
             int32_t total = id(raw_l1_power) + id(raw_l2_power) + id(raw_l3_power);
-            id(victron_meter)->write_holding_register(40, (uint16_t)((total >> 16) & 0xFFFF));
-            id(victron_meter)->write_holding_register(41, (uint16_t)(total & 0xFFFF));
+            id(victron_meter)->write_holding_register(0x3080, (uint16_t)((total >> 16) & 0xFFFF));
+            id(victron_meter)->write_holding_register(0x3081, (uint16_t)(total & 0xFFFF));
 
   - platform: homeassistant
     id: l3_power
@@ -241,15 +254,15 @@ sensor:
     on_value:
       then:
         - lambda: |-
-            id(raw_l3_power) = (int32_t)(x * 10.0f);
+            id(raw_l3_power) = (int32_t)(x);
             int32_t v = id(raw_l3_power);
-            id(victron_meter)->write_holding_register(22, (uint16_t)((v >> 16) & 0xFFFF));
-            id(victron_meter)->write_holding_register(23, (uint16_t)(v & 0xFFFF));
+            id(victron_meter)->write_holding_register(0x308a, (uint16_t)((v >> 16) & 0xFFFF));
+            id(victron_meter)->write_holding_register(0x308b, (uint16_t)(v & 0xFFFF));
             int32_t total = id(raw_l1_power) + id(raw_l2_power) + id(raw_l3_power);
-            id(victron_meter)->write_holding_register(40, (uint16_t)((total >> 16) & 0xFFFF));
-            id(victron_meter)->write_holding_register(41, (uint16_t)(total & 0xFFFF));
+            id(victron_meter)->write_holding_register(0x3080, (uint16_t)((total >> 16) & 0xFFFF));
+            id(victron_meter)->write_holding_register(0x3081, (uint16_t)(total & 0xFFFF));
 
-  # ── Frequency (INT16, ÷10, Hz) ───────────────────────────────────────────
+  # ── Frequency (u16, ÷100, Hz) ────────────────────────────────────────────
   - platform: homeassistant
     id: grid_frequency
     name: "Grid Frequency"
@@ -257,10 +270,9 @@ sensor:
     on_value:
       then:
         - lambda: |-
-            id(victron_meter)->write_holding_register(51, (uint16_t)(x * 10.0f));
+            id(victron_meter)->write_holding_register(0x3032, (uint16_t)(x * 100.0f));
 
-  # ── Energy (UINT32, ÷10, Wh — HA sensor in kWh) ─────────────────────────
-  # raw = kWh × 1000 (→ Wh) × 10 (→ 0.1 Wh register units) = kWh × 10000
+  # ── Energy (u32b, ÷100, kWh — HA sensor already in kWh) ─────────────────
   - platform: homeassistant
     id: energy_import
     name: "Energy Import"
@@ -268,9 +280,9 @@ sensor:
     on_value:
       then:
         - lambda: |-
-            uint32_t v = (uint32_t)(x * 10000.0f);
-            id(victron_meter)->write_holding_register(52, (uint16_t)((v >> 16) & 0xFFFF));
-            id(victron_meter)->write_holding_register(53, (uint16_t)(v & 0xFFFF));
+            uint32_t v = (uint32_t)(x * 100.0f);
+            id(victron_meter)->write_holding_register(0x3034, (uint16_t)((v >> 16) & 0xFFFF));
+            id(victron_meter)->write_holding_register(0x3035, (uint16_t)(v & 0xFFFF));
 
   - platform: homeassistant
     id: energy_export
@@ -279,6 +291,6 @@ sensor:
     on_value:
       then:
         - lambda: |-
-            uint32_t v = (uint32_t)(x * 10000.0f);
-            id(victron_meter)->write_holding_register(78, (uint16_t)((v >> 16) & 0xFFFF));
-            id(victron_meter)->write_holding_register(79, (uint16_t)(v & 0xFFFF));
+            uint32_t v = (uint32_t)(x * 100.0f);
+            id(victron_meter)->write_holding_register(0x3036, (uint16_t)((v >> 16) & 0xFFFF));
+            id(victron_meter)->write_holding_register(0x3037, (uint16_t)(v & 0xFFFF));
