@@ -134,8 +134,9 @@ bool ModbusTcpServer::handle_request_(WiFiClient &client) {
 
   uint8_t function_code = pdu[0];
 
-  if (function_code == 0x03) {
-    // Read Holding Registers: [FC=0x03][Start_H][Start_L][Qty_H][Qty_L]
+  if (function_code == 0x03 || function_code == 0x04) {
+    // FC03 = Read Holding Registers, FC04 = Read Input Registers
+    // We serve both from the same register map.
     if (pdu_len < 5) {
       send_exception_(client, transaction_id, function_code, 0x03 /* illegal data value */);
       return true;
@@ -171,7 +172,7 @@ bool ModbusTcpServer::handle_request_(WiFiClient &client) {
     response[4] = (uint8_t)(mbap_length >> 8);
     response[5] = (uint8_t)(mbap_length & 0xFF);
     response[6] = unit_id_;
-    response[7] = 0x03;
+    response[7] = function_code;  // echo back FC03 or FC04
     response[8] = (uint8_t)byte_count;
 
     for (uint16_t i = 0; i < quantity; i++) {
