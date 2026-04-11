@@ -6,29 +6,17 @@ substitutions:
   device_name: em24-emulator
   modbus_unit_id: "1"    # Victron GX uses unit ID 1 when polling via Modbus TCP
 
-  # ── Home Assistant entity IDs ───────────────────────────────────────────────
-  # Replace each value with the entity_id of the matching sensor in your HA.
-  # Units:  voltage → V,  current → A,  power → W,  frequency → Hz,  energy → kWh
-  ha_l1_voltage:    sensor.grid_l1_voltage
-  ha_l2_voltage:    sensor.grid_l2_voltage
-  ha_l3_voltage:    sensor.grid_l3_voltage
-  ha_l1l2_voltage:  sensor.grid_l1l2_voltage
-  ha_l2l3_voltage:  sensor.grid_l2l3_voltage
-  ha_l3l1_voltage:  sensor.grid_l3l1_voltage
-  ha_l1_current:    sensor.grid_l1_current
-  ha_l2_current:    sensor.grid_l2_current
-  ha_l3_current:    sensor.grid_l3_current
-  ha_l1_power:      sensor.grid_l1_power   # positive = import, negative = export
-  ha_l2_power:      sensor.grid_l2_power
-  ha_l3_power:      sensor.grid_l3_power
-  ha_frequency:     sensor.grid_frequency
-  ha_energy_import: sensor.grid_total_energy_import   # kWh, cumulative
-  ha_energy_export: sensor.grid_total_energy_export   # kWh, cumulative
-
 # ── ESPHome core ───────────────────────────────────────────────────────────────
 esphome:
   name: ${device_name}
   friendly_name: Carlo Gavazzi EM24 Emulator
+  on_boot:
+    priority: 200
+    then:
+      - lambda: |-
+          // Set static values that have no HA sensor
+          id(victron_meter)->set_frequency(50.0f);
+          id(victron_meter)->set_energy_export(0.0f);  // Zaptec only imports
 
 esp32:
   board: esp32dev
@@ -61,8 +49,6 @@ web_server:
 
 # ── Modbus TCP server ──────────────────────────────────────────────────────────
 # Component is fetched from GitHub on first compile.
-# Identification registers (model, serial, phase config) are written at boot
-# by the component itself. Sensor subscriptions are auto-generated below.
 external_components:
   - source:
       type: git
@@ -75,20 +61,85 @@ modbus_tcp_server:
   id: victron_meter
   port: 502
   unit_id: ${modbus_unit_id}
-  phases: 3              # 1 or 3
+  phases: 3
   serial_number: "ESP32EM240001"    # up to 14 characters, shown in Cerbo GX device info
-  l1_voltage:    ${ha_l1_voltage}
-  l2_voltage:    ${ha_l2_voltage}
-  l3_voltage:    ${ha_l3_voltage}
-  l1l2_voltage:  ${ha_l1l2_voltage}
-  l2l3_voltage:  ${ha_l2l3_voltage}
-  l3l1_voltage:  ${ha_l3l1_voltage}
-  l1_current:    ${ha_l1_current}
-  l2_current:    ${ha_l2_current}
-  l3_current:    ${ha_l3_current}
-  l1_power:      ${ha_l1_power}
-  l2_power:      ${ha_l2_power}
-  l3_power:      ${ha_l3_power}
-  frequency:     ${ha_frequency}
-  energy_import: ${ha_energy_import}
-  energy_export: ${ha_energy_export}
+
+# ── Zaptec sensors → Modbus registers ─────────────────────────────────────────
+# Per-phase power is not available from Zaptec — computed as V × I (PF ≈ 1
+# for EV charging). Total power is auto-summed from per-phase values.
+# Energy import uses the cumulative energy_meter reading.
+sensor:
+  # ── Voltages ─────────────────────────────────────────────────────────────────
+  - platform: homeassistant
+    id: zaptec_v1
+    entity_id: sensor.merovingen_20_voltage_phase_1
+    on_value:
+      then:
+        - lambda: |-
+            id(victron_meter)->set_voltage(1, x);
+            if (!isnan(id(zaptec_i1).state))
+              id(victron_meter)->set_power(1, x * id(zaptec_i1).state);
+
+  - platform: homeassistant
+    id: zaptec_v2
+    entity_id: sensor.merovingen_20_voltage_phase_2
+    on_value:
+      then:
+        - lambda: |-
+            id(victron_meter)->set_voltage(2, x);
+            if (!isnan(id(zaptec_i2).state))
+              id(victron_meter)->set_power(2, x * id(zaptec_i2).state);
+
+  - platform: homeassistant
+    id: zaptec_v3
+    entity_id: sensor.merovingen_20_voltage_phase_3
+    on_value:
+      then:
+        - lambda: |-
+            id(victron_meter)->set_voltage(3, x);
+            if (!isnan(id(zaptec_i3).state))
+              id(victron_meter)->set_power(3, x * id(zaptec_i3).state);
+
+  # ── Currents ─────────────────────────────────────────────────────────────────
+  - platform: homeassistant
+    id: zaptec_i1
+    entity_id: sensor.merovingen_20_current_phase_1
+    on_value:
+      then:
+        - lambda: |-
+            id(victron_meter)->set_current(1, x);
+            if (!isnan(id(zaptec_v1).state))
+              id(victron_meter)->set_power(1, x * id(zaptec_v1).state);
+
+  - platform: homeassistant
+    id: zaptec_i2
+    entity_id: sensor.merovingen_20_current_phase_2
+    on_value:
+      then:
+        - lambda: |-
+            id(victron_meter)->set_current(2, x);
+            if (!isnan(id(zaptec_v2).state))
+              id(victron_meter)->set_power(2, x * id(zaptec_v2).state);
+
+  - platform: homeassistant
+    id: zaptec_i3
+    entity_id: sensor.merovingen_20_current_phase_3
+    on_value:
+      then:
+        - lambda: |-
+            id(victron_meter)->set_current(3, x);
+            if (!isnan(id(zaptec_v3).state))
+              id(victron_meter)->set_power(3, x * id(zaptec_v3).state);
+
+  # ── Energy import (cumulative kWh) ───────────────────────────────────────────
+  - platform: homeassistant
+    id: zaptec_energy
+    entity_id: sensor.merovingen_20_energy_meter
+    on_value:
+      then:
+        - lambda: |-
+            id(victron_meter)->set_energy_import(x);
+            // Distribute equally across phases for per-phase energy registers
+            id(victron_meter)->set_phase_energy_import(1, x / 3.0f);
+            id(victron_meter)->set_phase_energy_import(2, x / 3.0f);
+            id(victron_meter)->set_phase_energy_import(3, x / 3.0f);
