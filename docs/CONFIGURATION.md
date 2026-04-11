@@ -38,6 +38,7 @@ These are set directly on the `modbus_tcp_server:` block:
 | Option | Default | Description |
 |--------|---------|-------------|
 | `phases` | `3` | Number of phases: `1` or `3` |
+| `serial_number` | `"00000000000000"` | Serial number shown in Cerbo GX device info (max 14 characters) |
 | `port` | `502` | Modbus TCP port |
 | `unit_id` | `1` | Modbus unit ID |
 

@@ -35,9 +35,13 @@ void ModbusTcpServer::setup() {
   // 0x1002: Phase config — 0 = 3P.n (three-phase), 3 = 1P (single-phase)
   write_holding_register(0x1002, (phases_ == 1) ? 3 : 0);
 
-  // 0x5000-0x5006: Serial number (7 registers, ASCII "0000000")
-  for (uint16_t r = 0x5000; r <= 0x5006; r++)
-    write_holding_register(r, 0x3030);
+  // 0x5000-0x5006: Serial number (7 registers, 2 ASCII bytes each = 14 chars)
+  // Pad or truncate serial_number_ to exactly 14 characters.
+  for (uint8_t i = 0; i < 7; i++) {
+    uint8_t hi = (serial_number_[i * 2]     != '\0') ? (uint8_t)serial_number_[i * 2]     : '0';
+    uint8_t lo = (serial_number_[i * 2 + 1] != '\0') ? (uint8_t)serial_number_[i * 2 + 1] : '0';
+    write_holding_register(0x5000 + i, ((uint16_t)hi << 8) | lo);
+  }
 
   // 0xa000: Application mode = 7 (mode H, required by driver)
   write_holding_register(0xa000, 7);
