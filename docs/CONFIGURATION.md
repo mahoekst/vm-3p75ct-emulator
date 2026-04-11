@@ -18,9 +18,9 @@ Each variable maps to an HA sensor entity that provides the corresponding measur
 | `ha_l1_voltage` | V | Phase 1 voltage (L1-N) |
 | `ha_l2_voltage` | V | Phase 2 voltage (L2-N) |
 | `ha_l3_voltage` | V | Phase 3 voltage (L3-N) |
-| `ha_l1l2_voltage` | V | Line voltage L1-L2 |
-| `ha_l2l3_voltage` | V | Line voltage L2-L3 |
-| `ha_l3l1_voltage` | V | Line voltage L3-L1 |
+| `ha_l1l2_voltage` | V | Line voltage L1-L2 _(accepted but not forwarded — EM24 does not expose L-L voltages via Modbus)_ |
+| `ha_l2l3_voltage` | V | Line voltage L2-L3 _(accepted but not forwarded)_ |
+| `ha_l3l1_voltage` | V | Line voltage L3-L1 _(accepted but not forwarded)_ |
 | `ha_l1_current` | A | Phase 1 current |
 | `ha_l2_current` | A | Phase 2 current |
 | `ha_l3_current` | A | Phase 3 current |
