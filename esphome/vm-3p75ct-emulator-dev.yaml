@@ -55,8 +55,11 @@ esphome:
           // Frequency: 50.0 Hz
           id(victron_meter)->set_frequency(50.0f);
 
-          // Energy import: 1.0 kWh, export: 0 kWh
-          id(victron_meter)->set_energy_import(1.0f);
+          // Energy import: 100 kWh total + 33 kWh per phase; export: 0 kWh
+          id(victron_meter)->set_energy_import(100.0f);
+          id(victron_meter)->set_phase_energy_import(1, 33.3f);
+          id(victron_meter)->set_phase_energy_import(2, 33.3f);
+          id(victron_meter)->set_phase_energy_import(3, 33.3f);
           id(victron_meter)->set_energy_export(0.0f);
 
 esp32:
@@ -178,6 +181,24 @@ sensor:
     accuracy_decimals: 1
     update_interval: 5s
     lambda: 'return id(victron_meter)->get_energy_export();'
+  - platform: template
+    name: "L1 Energy Import"
+    unit_of_measurement: "kWh"
+    accuracy_decimals: 1
+    update_interval: 5s
+    lambda: 'return id(victron_meter)->get_phase_energy_import(1);'
+  - platform: template
+    name: "L2 Energy Import"
+    unit_of_measurement: "kWh"
+    accuracy_decimals: 1
+    update_interval: 5s
+    lambda: 'return id(victron_meter)->get_phase_energy_import(2);'
+  - platform: template
+    name: "L3 Energy Import"
+    unit_of_measurement: "kWh"
+    accuracy_decimals: 1
+    update_interval: 5s
+    lambda: 'return id(victron_meter)->get_phase_energy_import(3);'
 
 modbus_tcp_server:
   id: victron_meter

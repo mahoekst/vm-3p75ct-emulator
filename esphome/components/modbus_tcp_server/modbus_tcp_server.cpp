@@ -158,6 +158,12 @@ void ModbusTcpServer::set_energy_export(float kwh) {
   write_s32l_(0x004e, (int32_t)(kwh * 10.0f));
 }
 
+// Per-phase energy import: s32l ÷10 → kWh, base 0x0040, step 2
+void ModbusTcpServer::set_phase_energy_import(uint8_t phase, float kwh) {
+  if (phase < 1 || phase > 3) return;
+  write_s32l_(0x0040 + (phase - 1) * 2, (int32_t)(kwh * 10.0f));
+}
+
 // ---------------------------------------------------------------------------
 // Typed getters — read back from register map for ESPHome template sensors
 // ---------------------------------------------------------------------------
@@ -197,6 +203,11 @@ float ModbusTcpServer::get_energy_import() {
 
 float ModbusTcpServer::get_energy_export() {
   return read_s32l(registers_, 0x004e) / 10.0f;
+}
+
+float ModbusTcpServer::get_phase_energy_import(uint8_t phase) {
+  if (phase < 1 || phase > 3) return 0.0f;
+  return read_s32l(registers_, 0x0040 + (phase - 1) * 2) / 10.0f;
 }
 
 // ---------------------------------------------------------------------------
