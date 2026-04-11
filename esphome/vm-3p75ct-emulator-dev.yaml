@@ -204,6 +204,7 @@ modbus_tcp_server:
   id: victron_meter
   port: 502
   unit_id: ${modbus_unit_id}
+  phases: 3   # 1 or 3
   # Uncomment and configure when connecting real HA sensors:
   # l1_voltage:    ${ha_l1_voltage}
   # l2_voltage:    ${ha_l2_voltage}

@@ -4,6 +4,7 @@ from esphome.const import CONF_ID, CONF_PORT
 from esphome.core import CORE
 
 CONF_UNIT_ID = "unit_id"
+CONF_PHASES = "phases"
 
 # ── HA entity_id fields — all optional ────────────────────────────────────────
 # Each key maps to a typed setter on ModbusTcpServer:
@@ -37,6 +38,7 @@ CONFIG_SCHEMA = cv.All(
             cv.GenerateID(): cv.declare_id(ModbusTcpServer),
             cv.Optional(CONF_PORT, default=502): cv.port,
             cv.Optional(CONF_UNIT_ID, default=1): cv.int_range(min=1, max=247),
+            cv.Optional(CONF_PHASES, default=3): cv.one_of(1, 3, int=True),
             # Optional HA entity_id for each measurement — when present, a
             # homeassistant state subscription is generated automatically.
             **{cv.Optional(key): cv.string for key, _ in _SENSOR_DEFS},
@@ -51,6 +53,7 @@ async def to_code(config):
     await cg.register_component(var, config)
     cg.add(var.set_port(config[CONF_PORT]))
     cg.add(var.set_unit_id(config[CONF_UNIT_ID]))
+    cg.add(var.set_phases(config[CONF_PHASES]))
     cg.add_library("WiFi", None)
 
     # ── Generate HA entity subscriptions ──────────────────────────────────────

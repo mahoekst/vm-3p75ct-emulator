@@ -32,8 +32,8 @@ void ModbusTcpServer::setup() {
   // 0x0304: Firmware version
   write_holding_register(0x0304, 0x0100);
 
-  // 0x1002: Phase config = 0 → 3P.n (three-phase with neutral)
-  write_holding_register(0x1002, 0x0000);
+  // 0x1002: Phase config — 0 = 3P.n (three-phase), 3 = 1P (single-phase)
+  write_holding_register(0x1002, (phases_ == 1) ? 3 : 0);
 
   // 0x5000-0x5006: Serial number (7 registers, ASCII "0000000")
   for (uint16_t r = 0x5000; r <= 0x5006; r++)

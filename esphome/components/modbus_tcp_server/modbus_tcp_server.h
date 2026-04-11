@@ -12,6 +12,7 @@ class ModbusTcpServer : public Component {
  public:
   void set_port(uint16_t port) { port_ = port; }
   void set_unit_id(uint8_t unit_id) { unit_id_ = unit_id; }
+  void set_phases(uint8_t phases) { phases_ = phases; }
 
   void setup() override;
   void loop() override;
@@ -47,6 +48,7 @@ class ModbusTcpServer : public Component {
  protected:
   uint16_t port_{502};
   uint8_t unit_id_{1};
+  uint8_t phases_{3};
   WiFiServer *server_{nullptr};
 
   // Track WiFi state to detect reconnects and restart the server socket
