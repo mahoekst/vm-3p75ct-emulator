@@ -19,6 +19,29 @@ static const uint32_t kSessionTimeoutMs = 2000;
 // ---------------------------------------------------------------------------
 
 void ModbusTcpServer::setup() {
+  // ── Carlo Gavazzi EM24DINAV53XE1X identification registers ───────────────
+  // Source: github.com/victronenergy/dbus-modbus-client/carlo_gavazzi.py
+  // The Cerbo GX probes register 0x000B over TCP to identify the meter.
+
+  // 0x000B: Model ID = 1651 → EM24DINAV53XE1X (3-phase)
+  write_holding_register(0x000b, 1651);
+
+  // 0x0302: Hardware version
+  write_holding_register(0x0302, 0x0100);
+
+  // 0x0304: Firmware version
+  write_holding_register(0x0304, 0x0100);
+
+  // 0x1002: Phase config = 0 → 3P.n (three-phase with neutral)
+  write_holding_register(0x1002, 0x0000);
+
+  // 0x5000-0x5006: Serial number (7 registers, ASCII "0000000")
+  for (uint16_t r = 0x5000; r <= 0x5006; r++)
+    write_holding_register(r, 0x3030);
+
+  // 0xa000: Application mode = 7 (mode H, required by driver)
+  write_holding_register(0xa000, 7);
+
   server_ = new WiFiServer(port_);
   // Don't call begin() here — WiFi may not be connected yet.
   // start_server_() is called by loop() on first WiFi connect.
@@ -33,10 +56,6 @@ void ModbusTcpServer::start_server_() {
 
 // ---------------------------------------------------------------------------
 // Main loop — non-blocking state machine.
-//
-// One client is handled at a time. The active client is stored in client_ so
-// that loop() returns to ESPHome between every request, keeping all other
-// components (HA API, web server, sensors) running normally.
 // ---------------------------------------------------------------------------
 
 void ModbusTcpServer::loop() {
@@ -44,8 +63,6 @@ void ModbusTcpServer::loop() {
     return;
 
   // Restart the server socket when WiFi reconnects after a drop.
-  // On ESP32 Arduino the lwIP stack resets on reconnect, invalidating the
-  // existing server socket — begin() must be called again.
   bool wifi_connected = network::is_connected();
   if (wifi_connected && !wifi_was_connected_) {
     ESP_LOGI(TAG, "WiFi (re)connected — restarting Modbus TCP server");
@@ -88,15 +105,61 @@ void ModbusTcpServer::loop() {
 }
 
 // ---------------------------------------------------------------------------
-// Modbus TCP frame parser — handles a single FC03 request/response exchange.
-// Returns true if a valid Modbus request was received and a response was sent.
-//
-// Modbus TCP ADU layout:
-//   [Transaction ID : 2 bytes]
-//   [Protocol ID    : 2 bytes] (always 0x0000)
-//   [Length         : 2 bytes] (bytes from Unit ID to end of PDU)
-//   [Unit ID        : 1 byte ]
-//   [PDU            : N bytes] (Function Code + Data)
+// Typed setters — EM24 register map, little-endian 32-bit (s32l)
+// ---------------------------------------------------------------------------
+
+void ModbusTcpServer::write_s32l_(uint16_t base_addr, int32_t value) {
+  write_holding_register(base_addr,     (uint16_t)(value & 0xFFFF));
+  write_holding_register(base_addr + 1, (uint16_t)((value >> 16) & 0xFFFF));
+}
+
+void ModbusTcpServer::update_total_power_() {
+  int32_t total = raw_power_[0] + raw_power_[1] + raw_power_[2];
+  write_s32l_(0x0028, total);
+}
+
+// Phase-to-neutral voltage: s32l ÷10 → V, base 0x0000, step 2
+void ModbusTcpServer::set_voltage(uint8_t phase, float volts) {
+  if (phase < 1 || phase > 3) return;
+  write_s32l_(0x0000 + (phase - 1) * 2, (int32_t)(volts * 10.0f));
+}
+
+// Line-to-line voltage: EM24 doesn't expose L-L via Modbus — no-op
+void ModbusTcpServer::set_ll_voltage(uint8_t phase, float volts) {
+  (void)phase; (void)volts;
+}
+
+// Current: s32l ÷1000 → A, base 0x000c, step 2
+void ModbusTcpServer::set_current(uint8_t phase, float amps) {
+  if (phase < 1 || phase > 3) return;
+  write_s32l_(0x000c + (phase - 1) * 2, (int32_t)(amps * 1000.0f));
+}
+
+// Active power: s32l ÷10 → W, base 0x0012, step 2; total at 0x0028
+void ModbusTcpServer::set_power(uint8_t phase, float watts) {
+  if (phase < 1 || phase > 3) return;
+  raw_power_[phase - 1] = (int32_t)(watts * 10.0f);
+  write_s32l_(0x0012 + (phase - 1) * 2, raw_power_[phase - 1]);
+  update_total_power_();
+}
+
+// Frequency: u16 ÷10 → Hz, register 0x0033
+void ModbusTcpServer::set_frequency(float hz) {
+  write_holding_register(0x0033, (uint16_t)(hz * 10.0f));
+}
+
+// Energy import: s32l ÷10 → kWh, registers 0x0034-35
+void ModbusTcpServer::set_energy_import(float kwh) {
+  write_s32l_(0x0034, (int32_t)(kwh * 10.0f));
+}
+
+// Energy export: s32l ÷10 → kWh, registers 0x004e-4f
+void ModbusTcpServer::set_energy_export(float kwh) {
+  write_s32l_(0x004e, (int32_t)(kwh * 10.0f));
+}
+
+// ---------------------------------------------------------------------------
+// Modbus TCP frame parser
 // ---------------------------------------------------------------------------
 
 bool ModbusTcpServer::handle_request_(WiFiClient &client) {
@@ -114,14 +177,11 @@ bool ModbusTcpServer::handle_request_(WiFiClient &client) {
     return false;
   }
 
-  // Guard: length must be at least 2 (unit ID byte + at least 1 PDU byte).
-  // Without this check, length=0 would underflow to 65535 on the next line.
   if (length < 2) {
     ESP_LOGW(TAG, "MBAP length too small: %d", length);
     return false;
   }
 
-  // PDU length = Length field minus the 1-byte Unit ID
   uint16_t pdu_len = length - 1;
   if (pdu_len > 253) {
     ESP_LOGW(TAG, "PDU length %d exceeds Modbus maximum of 253", pdu_len);
@@ -135,10 +195,8 @@ bool ModbusTcpServer::handle_request_(WiFiClient &client) {
   uint8_t function_code = pdu[0];
 
   if (function_code == 0x03 || function_code == 0x04) {
-    // FC03 = Read Holding Registers, FC04 = Read Input Registers
-    // We serve both from the same register map.
     if (pdu_len < 5) {
-      send_exception_(client, transaction_id, function_code, 0x03 /* illegal data value */);
+      send_exception_(client, transaction_id, function_code, 0x03);
       return true;
     }
 
@@ -150,19 +208,15 @@ bool ModbusTcpServer::handle_request_(WiFiClient &client) {
       return true;
     }
 
-    // Guard: ensure start_addr + quantity does not wrap the 16-bit address space.
-    // Without this, reading near address 65535 would silently wrap back to 0.
     if ((uint32_t)start_addr + (uint32_t)quantity > 0x10000U) {
-      send_exception_(client, transaction_id, function_code, 0x02 /* illegal data address */);
+      send_exception_(client, transaction_id, function_code, 0x02);
       return true;
     }
 
-    ESP_LOGD(TAG, "FC03 addr=%d qty=%d", start_addr, quantity);
+    ESP_LOGD(TAG, "FC%02X addr=0x%04X qty=%d", function_code, start_addr, quantity);
 
-    // Build response:
-    // MBAP (6) + Unit ID (1) + FC (1) + ByteCount (1) + registers (qty*2)
     uint16_t byte_count  = quantity * 2;
-    uint16_t mbap_length = 3 + byte_count;  // unit_id + FC + byte_count + data
+    uint16_t mbap_length = 3 + byte_count;
 
     uint8_t response[9 + 125 * 2];
     response[0] = (uint8_t)(transaction_id >> 8);
@@ -172,7 +226,7 @@ bool ModbusTcpServer::handle_request_(WiFiClient &client) {
     response[4] = (uint8_t)(mbap_length >> 8);
     response[5] = (uint8_t)(mbap_length & 0xFF);
     response[6] = unit_id_;
-    response[7] = function_code;  // echo back FC03 or FC04
+    response[7] = function_code;
     response[8] = (uint8_t)byte_count;
 
     for (uint16_t i = 0; i < quantity; i++) {
@@ -186,7 +240,7 @@ bool ModbusTcpServer::handle_request_(WiFiClient &client) {
 
   } else {
     ESP_LOGD(TAG, "Unsupported function code 0x%02X", function_code);
-    send_exception_(client, transaction_id, function_code, 0x01 /* illegal function */);
+    send_exception_(client, transaction_id, function_code, 0x01);
     return true;
   }
 }
@@ -200,8 +254,8 @@ void ModbusTcpServer::send_exception_(WiFiClient &client, uint16_t transaction_i
   uint8_t response[9] = {
     (uint8_t)(transaction_id >> 8),
     (uint8_t)(transaction_id & 0xFF),
-    0x00, 0x00,   // protocol ID
-    0x00, 0x03,   // length = 3 (unit_id + error FC + exception code)
+    0x00, 0x00,
+    0x00, 0x03,
     unit_id_,
     (uint8_t)(function_code | 0x80),
     exception_code,

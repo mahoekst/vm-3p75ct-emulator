@@ -19,7 +19,17 @@ class ModbusTcpServer : public Component {
   // Priority: start after WiFi is up
   float get_setup_priority() const override { return setup_priority::AFTER_WIFI; }
 
-  // Register access — called from ESPHome sensor lambdas
+  // ── Typed setters — called from generated HA sensor subscriptions ────────
+  // phase: 1 = L1, 2 = L2, 3 = L3
+  void set_voltage(uint8_t phase, float volts);    // L-N, s32l ÷10
+  void set_ll_voltage(uint8_t phase, float volts); // L-L — no-op (EM24 doesn't expose via Modbus)
+  void set_current(uint8_t phase, float amps);     // s32l ÷1000
+  void set_power(uint8_t phase, float watts);      // s32l ÷10; total auto-updated
+  void set_frequency(float hz);                    // u16 ÷10
+  void set_energy_import(float kwh);               // s32l ÷10
+  void set_energy_export(float kwh);               // s32l ÷10
+
+  // Low-level register access — still available for on_boot dummy values
   bool write_holding_register(uint16_t address, uint16_t value);
   uint16_t read_holding_register(uint16_t address);
 
@@ -40,8 +50,15 @@ class ModbusTcpServer : public Component {
   // Sparse register map — only allocated addresses consume memory
   std::map<uint16_t, uint16_t> registers_;
 
+  // Cached per-phase power (raw, ÷10 → W) for total register recalculation
+  int32_t raw_power_[3]{0, 0, 0};
+
+  // Helper: write a 32-bit signed value as two 16-bit little-endian words
+  void write_s32l_(uint16_t base_addr, int32_t value);
+  // Helper: recalculate and write total power register (0x0028-29)
+  void update_total_power_();
+
   void start_server_();
-  // Returns true if a valid Modbus frame was received and responded to
   bool handle_request_(WiFiClient &client);
   void send_exception_(WiFiClient &client, uint16_t transaction_id,
                        uint8_t function_code, uint8_t exception_code);

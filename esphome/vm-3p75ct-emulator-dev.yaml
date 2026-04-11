@@ -34,59 +34,30 @@ esphome:
     priority: 200   # after WiFi + component setup
     then:
       - lambda: |-
-          // ── Carlo Gavazzi EM24DINAV53XE1X identification registers ─────────
-          // Source: github.com/victronenergy/dbus-modbus-client/carlo_gavazzi.py
-          // The Cerbo GX probes register 0x000B over TCP to identify the meter.
+          // Dummy data values — overrides zeros until real data sources are wired up.
+          // Remove this on_boot block once live data is connected.
 
-          // 0x000B: Model ID = 1651 → EM24DINAV53XE1X (3-phase)
-          id(victron_meter)->write_holding_register(0x000b, 1651);
+          // Voltage: 230.0 V per phase
+          id(victron_meter)->set_voltage(1, 230.0f);
+          id(victron_meter)->set_voltage(2, 230.0f);
+          id(victron_meter)->set_voltage(3, 230.0f);
 
-          // 0x0302: Hardware version
-          id(victron_meter)->write_holding_register(0x0302, 0x0100);
+          // Current: 1.0 A per phase
+          id(victron_meter)->set_current(1, 1.0f);
+          id(victron_meter)->set_current(2, 1.0f);
+          id(victron_meter)->set_current(3, 1.0f);
 
-          // 0x0304: Firmware version
-          id(victron_meter)->write_holding_register(0x0304, 0x0100);
+          // Power: 10 W per phase (total 30 W auto-calculated)
+          id(victron_meter)->set_power(1, 10.0f);
+          id(victron_meter)->set_power(2, 10.0f);
+          id(victron_meter)->set_power(3, 10.0f);
 
-          // 0x1002: Phase config = 0 → 3P.n (three-phase with neutral)
-          id(victron_meter)->write_holding_register(0x1002, 0x0000);
+          // Frequency: 50.0 Hz
+          id(victron_meter)->set_frequency(50.0f);
 
-          // 0x5000-0x5006: Serial number (7 registers, ASCII)
-          id(victron_meter)->write_holding_register(0x5000, 0x3030); // "00"
-          id(victron_meter)->write_holding_register(0x5001, 0x3030); // "00"
-          id(victron_meter)->write_holding_register(0x5002, 0x3030); // "00"
-          id(victron_meter)->write_holding_register(0x5003, 0x3030); // "00"
-          id(victron_meter)->write_holding_register(0x5004, 0x3030); // "00"
-          id(victron_meter)->write_holding_register(0x5005, 0x3030); // "00"
-          id(victron_meter)->write_holding_register(0x5006, 0x3030); // "00"
-
-          // 0xa000: Application mode = 7 (mode H, required by driver)
-          id(victron_meter)->write_holding_register(0xa000, 7);
-
-          // ── Dummy data values (s32l little-endian: low word first) ──────────
-          // Voltage: 230.0 V → raw 2300 per phase
-          id(victron_meter)->write_holding_register(0x0000, 2300); id(victron_meter)->write_holding_register(0x0001, 0); // L1
-          id(victron_meter)->write_holding_register(0x0002, 2300); id(victron_meter)->write_holding_register(0x0003, 0); // L2
-          id(victron_meter)->write_holding_register(0x0004, 2300); id(victron_meter)->write_holding_register(0x0005, 0); // L3
-
-          // Current: 1.0 A → raw 1000 per phase
-          id(victron_meter)->write_holding_register(0x000c, 1000); id(victron_meter)->write_holding_register(0x000d, 0); // L1
-          id(victron_meter)->write_holding_register(0x000e, 1000); id(victron_meter)->write_holding_register(0x000f, 0); // L2
-          id(victron_meter)->write_holding_register(0x0010, 1000); id(victron_meter)->write_holding_register(0x0011, 0); // L3
-
-          // Power: 10 W per phase → raw 100; total 30 W
-          id(victron_meter)->write_holding_register(0x0012, 100); id(victron_meter)->write_holding_register(0x0013, 0); // L1
-          id(victron_meter)->write_holding_register(0x0014, 100); id(victron_meter)->write_holding_register(0x0015, 0); // L2
-          id(victron_meter)->write_holding_register(0x0016, 100); id(victron_meter)->write_holding_register(0x0017, 0); // L3
-          id(victron_meter)->write_holding_register(0x0028, 300); id(victron_meter)->write_holding_register(0x0029, 0); // Total
-
-          // Frequency: 50.0 Hz → raw 500
-          id(victron_meter)->write_holding_register(0x0033, 500);
-
-          // Energy import: 1.0 kWh → raw 10
-          id(victron_meter)->write_holding_register(0x0034, 10); id(victron_meter)->write_holding_register(0x0035, 0);
-
-          // Energy export: 0 kWh
-          id(victron_meter)->write_holding_register(0x004e, 0); id(victron_meter)->write_holding_register(0x004f, 0);
+          // Energy import: 1.0 kWh, export: 0 kWh
+          id(victron_meter)->set_energy_import(1.0f);
+          id(victron_meter)->set_energy_export(0.0f);
 
 esp32:
   board: esp32dev
@@ -129,5 +100,19 @@ modbus_tcp_server:
   id: victron_meter
   port: 502
   unit_id: ${modbus_unit_id}
-
-# No sensor block — dummy values are written statically in on_boot above.
+  # Uncomment and configure when connecting real HA sensors:
+  # l1_voltage:    ${ha_l1_voltage}
+  # l2_voltage:    ${ha_l2_voltage}
+  # l3_voltage:    ${ha_l3_voltage}
+  # l1l2_voltage:  ${ha_l1l2_voltage}
+  # l2l3_voltage:  ${ha_l2l3_voltage}
+  # l3l1_voltage:  ${ha_l3l1_voltage}
+  # l1_current:    ${ha_l1_current}
+  # l2_current:    ${ha_l2_current}
+  # l3_current:    ${ha_l3_current}
+  # l1_power:      ${ha_l1_power}
+  # l2_power:      ${ha_l2_power}
+  # l3_power:      ${ha_l3_power}
+  # frequency:     ${ha_frequency}
+  # energy_import: ${ha_energy_import}
+  # energy_export: ${ha_energy_export}
