@@ -42,6 +42,9 @@ void ModbusTcpServer::setup() {
   // 0xa000: Application mode = 7 (mode H, required by driver)
   write_holding_register(0xa000, 7);
 
+  // 0xa100: Switch position = 3 → "Locked" (prevents physical mode changes)
+  write_holding_register(0xa100, 3);
+
   server_ = new WiFiServer(port_);
   // Don't call begin() here — WiFi may not be connected yet.
   // start_server_() is called by loop() on first WiFi connect.
