@@ -1,13 +1,8 @@
-# VM-3P75CT Native Victron Modbus Register Map
+# Carlo Gavazzi EM24 Modbus Register Map
 
-The ESP32 emulates a **Victron Energy VM-3P75CT** (product ID `0xa1b1`) using the
-native Victron register map defined in
-[`dbus-modbus-client/victron_em.py`](https://github.com/victronenergy/dbus-modbus-client/blob/master/victron_em.py)
-(class `VE_Meter_A1B1`).
-
-> **Important:** This is NOT the Carlo Gavazzi EM24 register map. The VM-3P75CT
-> uses its own native Victron protocol. Always refer to this document and
-> `victron_em.py` — do not use EM24 documentation.
+The ESP32 emulates a **Carlo Gavazzi EM24 DINAV53XE1X** (model ID `1651`) using the
+register map defined in
+[`dbus-modbus-client/carlo_gavazzi.py`](https://github.com/victronenergy/dbus-modbus-client/blob/master/carlo_gavazzi.py).
 
 ## Physical layer
 
@@ -22,57 +17,63 @@ native Victron register map defined in
 
 | Reg (hex) | Value | Description |
 |-----------|-------|-------------|
-| 0x1000 | 0xa1b1 | Product ID — VM-3P75CT |
-| 0x1009 | 0x0001 | Firmware version high (major.minor = 0.1) |
-| 0x100a | 0x0900 | Firmware version low (patch.build = 9.0) |
-| 0x100b | 0x0001 | Hardware version |
-| 0x2000 | 0x0003 | Phase config: 3 = three-phase L1+L2+L3 |
-| 0x2001 | 0x0000 | Role: 0 = grid meter |
-| 0x3038 | 0x0000 | Error code: 0 = no error |
+| 0x000B | 1651 | Model ID — EM24DINAV53XE1X (3-phase) |
+| 0x0302 | 0x0100 | Hardware version |
+| 0x0304 | 0x0100 | Firmware version |
+| 0x1002 | 0x0000 | Phase config: 0 = 3P.n (three-phase), 3 = 1P (single-phase) |
+| 0x5000–5006 | 0x3030 | Serial number (7 registers, ASCII "0000000") |
+| 0xa000 | 7 | Application mode H (required by driver) |
+| 0xa100 | 3 | Switch position: 3 = Locked |
 
-The Cerbo GX reads `0x1000` to confirm the device is a VM-3P75CT before
-accepting it. Firmware version ≥ 0.1.9.0 enables all data paths (current,
-line-to-line voltage, power factor).
+The Cerbo GX probes register `0x000B` over TCP to identify the meter.
+A value of `1651` causes it to recognize the device as an EM24DINAV53XE1X.
 
 ## Register encoding
 
-All multi-word values use **big-endian word order**: the high 16-bit word is at
+All multi-word values use **little-endian word order** (s32l): the low 16-bit word is at
 the lower register address.
 
 | Type | Size | Description |
 |------|------|-------------|
-| s16 | 1 reg | Signed 16-bit integer |
-| s32b | 2 regs | Signed 32-bit, big-endian word order |
+| s32l | 2 regs | Signed 32-bit, little-endian word order (low word first) |
 | u16 | 1 reg | Unsigned 16-bit integer |
-| u32b | 2 regs | Unsigned 32-bit, big-endian word order |
 
-## Total registers
+## Measurement registers
+
+### Per-phase (n = 1, 2, 3)
+
+| Measurement | Base addr | Step | Type | Scale | Unit |
+|-------------|-----------|------|------|-------|------|
+| Voltage L-N | 0x0000 + 2×(n−1) | 2 | s32l | ÷10 | V |
+| Current | 0x000C + 2×(n−1) | 2 | s32l | ÷1000 | A |
+| Active power | 0x0012 + 2×(n−1) | 2 | s32l | ÷10 | W |
+| Energy forward | 0x0040 + 2×(n−1) | 2 | s32l | ÷10 | kWh |
+
+Expanded:
+
+| Phase | Voltage | Current | Power | Energy Fwd |
+|-------|---------|---------|-------|------------|
+| L1 | 0x0000–01 | 0x000C–0D | 0x0012–13 | 0x0040–41 |
+| L2 | 0x0002–03 | 0x000E–0F | 0x0014–15 | 0x0042–43 |
+| L3 | 0x0004–05 | 0x0010–11 | 0x0016–17 | 0x0044–45 |
+
+### Totals
 
 | Reg (hex) | Type | Scale | Unit | Description |
 |-----------|------|-------|------|-------------|
-| 0x3032 | u16 | ÷100 | Hz | Frequency |
-| 0x3034–35 | u32b | ÷100 | kWh | Total energy forward (import) |
-| 0x3036–37 | u32b | ÷100 | kWh | Total energy reverse (export) |
-| 0x3038 | u16 | — | — | Error code |
-| 0x3080–81 | s32b | ÷1 | W | Total active power (sum of phases) |
-
-## Per-phase registers
-
-Phase base address: `base = 0x3040 + 8 × (n−1)`
-Phase power address: `power = 0x3082 + 4 × (n−1)`
-
-| Phase | Voltage (s16 ÷100 V) | Current (s16 ÷100 A) | L-L Voltage (s16 ÷100 V) | Energy Fwd (u32b ÷100 kWh) | Energy Rev (u32b ÷100 kWh) | Power (s32b ÷1 W) |
-|-------|----------------------|----------------------|--------------------------|-----------------------------|-----------------------------|-------------------|
-| L1 | 0x3040 | 0x3041 | 0x3046 | 0x3042–43 | 0x3044–45 | 0x3082–83 |
-| L2 | 0x3048 | 0x3049 | 0x304e | 0x304a–4b | 0x304c–4d | 0x3086–87 |
-| L3 | 0x3050 | 0x3051 | 0x3056 | 0x3052–53 | 0x3054–55 | 0x308a–8b |
+| 0x0028–29 | s32l | ÷10 | W | Total active power (auto-summed from phases) |
+| 0x0033 | u16 | ÷10 | Hz | Frequency |
+| 0x0034–35 | s32l | ÷10 | kWh | Total energy forward (import) |
+| 0x004E–4F | s32l | ÷10 | kWh | Total energy reverse (export) |
 
 ## Lambda scaling summary
 
-| Sensor (HA unit) | Register value written |
-|------------------|----------------------|
-| Voltage V | `(int16_t)(x * 100)` |
-| Current A | `(int16_t)(x * 100)` |
-| Power W | `(int32_t)(x)` — integer watts, no scaling |
-| Frequency Hz | `(uint16_t)(x * 100)` |
-| Energy kWh | `(uint32_t)(x * 100)` |
+| Sensor (HA unit) | Typed setter | Raw value written |
+|------------------|-------------|-------------------|
+| Voltage V | `set_voltage(phase, v)` | `(int32_t)(v * 10)` |
+| Current A | `set_current(phase, a)` | `(int32_t)(a * 1000)` |
+| Power W | `set_power(phase, w)` | `(int32_t)(w * 10)` |
+| Frequency Hz | `set_frequency(hz)` | `(uint16_t)(hz * 10)` |
+| Energy kWh | `set_energy_import(kwh)` | `(int32_t)(kwh * 10)` |
+| Energy kWh | `set_energy_export(kwh)` | `(int32_t)(kwh * 10)` |
+| Energy kWh | `set_phase_energy_import(n, kwh)` | `(int32_t)(kwh * 10)` |
