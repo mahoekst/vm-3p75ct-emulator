@@ -6,7 +6,7 @@ All user-facing settings live in the `substitutions:` block at the top of the YA
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `device_name` | `vm-3p75ct-emulator` | ESPHome device name (also the mDNS hostname) |
+| `device_name` | `em24-emulator` | ESPHome device name (also the mDNS hostname) |
 | `modbus_unit_id` | `1` | Modbus unit ID the Victron GX uses when polling. Must match GX configuration. |
 
 ## Home Assistant entity IDs
@@ -30,6 +30,16 @@ Each variable maps to an HA sensor entity that provides the corresponding measur
 | `ha_frequency` | Hz | Grid frequency |
 | `ha_energy_import` | kWh | Cumulative total energy imported |
 | `ha_energy_export` | kWh | Cumulative total energy exported |
+
+## Component options
+
+These are set directly on the `modbus_tcp_server:` block:
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `phases` | `3` | Number of phases: `1` or `3` |
+| `port` | `502` | Modbus TCP port |
+| `unit_id` | `1` | Modbus unit ID |
 
 ## Secrets (`esphome/secrets.yaml`)
 

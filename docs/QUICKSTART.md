@@ -21,21 +21,21 @@ python3 -m esphome gen-api-key   # paste the output as esphome_api_key
 
 ## 2. Configure entity IDs
 
-Open `esphome/vm-3p75ct-emulator.yaml` and update the `substitutions:` block with your actual Home Assistant entity IDs for each phase measurement.
+Open `esphome/em24-emulator.yaml` and update the `substitutions:` block with your actual Home Assistant entity IDs for each phase measurement.
 
 See [CONFIGURATION.md](CONFIGURATION.md) for details on each field.
 
 ## 3. Flash the ESP32 (first time, USB)
 
 ```bash
-python3 -m esphome run esphome/vm-3p75ct-emulator-dev.yaml
+python3 -m esphome run esphome/em24-emulator-dev.yaml
 ```
 
 After the first flash, subsequent updates can be done over WiFi (OTA).
 
 ## 4. Add to Home Assistant
 
-Paste the contents of `esphome/vm-3p75ct-emulator.yaml` into a new device in the Home Assistant ESPHome dashboard. HA will fetch the component from GitHub automatically.
+Paste the contents of `esphome/em24-emulator.yaml` into a new device in the Home Assistant ESPHome dashboard. HA will fetch the component from GitHub automatically.
 
 ## 5. Configure Victron GX
 

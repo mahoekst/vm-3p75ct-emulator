@@ -5,7 +5,7 @@
 1. Clone the repo and `cd` into it
 2. `cp esphome/secrets.yaml.example esphome/secrets.yaml` and fill in your values
 3. Edit component code in `esphome/components/modbus_tcp_server/`
-4. Compile and flash with the dev config: `esphome run esphome/vm-3p75ct-emulator-dev.yaml`
+4. Compile and flash with the dev config: `esphome run esphome/em24-emulator-dev.yaml`
 
 See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for the full workflow.
 

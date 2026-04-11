@@ -1,10 +1,10 @@
 # ── Local development version ─────────────────────────────────────────────────
 # Uses the component from your local filesystem so you can edit C++ and
 # recompile immediately without pushing to GitHub.
-# Do NOT paste this file into Home Assistant — use vm-3p75ct-emulator.yaml.
+# Do NOT paste this file into Home Assistant — use em24-emulator.yaml.
 
 substitutions:
-  device_name: vm-3p75ct-emulator
+  device_name: em24-emulator
   modbus_unit_id: "1"    # Victron GX uses unit ID 1 when polling via Modbus TCP
 
   # ── Home Assistant entity IDs ───────────────────────────────────────────────
@@ -29,7 +29,7 @@ substitutions:
 # ── ESPHome core ───────────────────────────────────────────────────────────────
 esphome:
   name: ${device_name}
-  friendly_name: Victron VM-3P75CT Emulator
+  friendly_name: Carlo Gavazzi EM24 Emulator
   on_boot:
     priority: 200   # after WiFi + component setup
     then:
