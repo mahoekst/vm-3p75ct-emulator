@@ -96,6 +96,89 @@ external_components:
       path: components
     components: [ modbus_tcp_server ]
 
+# ── Web UI sensors — read back from component register map ────────────────────
+# These make the ESPHome web server display the values currently being served
+# to the Cerbo GX. update_interval controls how often the web UI refreshes.
+sensor:
+  - platform: template
+    name: "L1 Voltage"
+    unit_of_measurement: "V"
+    accuracy_decimals: 1
+    update_interval: 5s
+    lambda: 'return id(victron_meter)->get_voltage(1);'
+  - platform: template
+    name: "L2 Voltage"
+    unit_of_measurement: "V"
+    accuracy_decimals: 1
+    update_interval: 5s
+    lambda: 'return id(victron_meter)->get_voltage(2);'
+  - platform: template
+    name: "L3 Voltage"
+    unit_of_measurement: "V"
+    accuracy_decimals: 1
+    update_interval: 5s
+    lambda: 'return id(victron_meter)->get_voltage(3);'
+  - platform: template
+    name: "L1 Current"
+    unit_of_measurement: "A"
+    accuracy_decimals: 3
+    update_interval: 5s
+    lambda: 'return id(victron_meter)->get_current(1);'
+  - platform: template
+    name: "L2 Current"
+    unit_of_measurement: "A"
+    accuracy_decimals: 3
+    update_interval: 5s
+    lambda: 'return id(victron_meter)->get_current(2);'
+  - platform: template
+    name: "L3 Current"
+    unit_of_measurement: "A"
+    accuracy_decimals: 3
+    update_interval: 5s
+    lambda: 'return id(victron_meter)->get_current(3);'
+  - platform: template
+    name: "L1 Power"
+    unit_of_measurement: "W"
+    accuracy_decimals: 1
+    update_interval: 5s
+    lambda: 'return id(victron_meter)->get_power(1);'
+  - platform: template
+    name: "L2 Power"
+    unit_of_measurement: "W"
+    accuracy_decimals: 1
+    update_interval: 5s
+    lambda: 'return id(victron_meter)->get_power(2);'
+  - platform: template
+    name: "L3 Power"
+    unit_of_measurement: "W"
+    accuracy_decimals: 1
+    update_interval: 5s
+    lambda: 'return id(victron_meter)->get_power(3);'
+  - platform: template
+    name: "Total Power"
+    unit_of_measurement: "W"
+    accuracy_decimals: 1
+    update_interval: 5s
+    lambda: 'return id(victron_meter)->get_total_power();'
+  - platform: template
+    name: "Frequency"
+    unit_of_measurement: "Hz"
+    accuracy_decimals: 1
+    update_interval: 5s
+    lambda: 'return id(victron_meter)->get_frequency();'
+  - platform: template
+    name: "Energy Import"
+    unit_of_measurement: "kWh"
+    accuracy_decimals: 1
+    update_interval: 5s
+    lambda: 'return id(victron_meter)->get_energy_import();'
+  - platform: template
+    name: "Energy Export"
+    unit_of_measurement: "kWh"
+    accuracy_decimals: 1
+    update_interval: 5s
+    lambda: 'return id(victron_meter)->get_energy_export();'
+
 modbus_tcp_server:
   id: victron_meter
   port: 502

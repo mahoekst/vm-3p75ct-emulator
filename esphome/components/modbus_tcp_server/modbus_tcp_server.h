@@ -29,6 +29,15 @@ class ModbusTcpServer : public Component {
   void set_energy_import(float kwh);               // s32l ÷10
   void set_energy_export(float kwh);               // s32l ÷10
 
+  // Typed getters — for template sensors in the YAML web UI
+  float get_voltage(uint8_t phase);
+  float get_current(uint8_t phase);
+  float get_power(uint8_t phase);
+  float get_total_power();
+  float get_frequency();
+  float get_energy_import();
+  float get_energy_export();
+
   // Low-level register access — still available for on_boot dummy values
   bool write_holding_register(uint16_t address, uint16_t value);
   uint16_t read_holding_register(uint16_t address);

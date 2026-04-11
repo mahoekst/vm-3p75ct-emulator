@@ -159,6 +159,47 @@ void ModbusTcpServer::set_energy_export(float kwh) {
 }
 
 // ---------------------------------------------------------------------------
+// Typed getters — read back from register map for ESPHome template sensors
+// ---------------------------------------------------------------------------
+
+int32_t read_s32l(std::map<uint16_t, uint16_t> &regs, uint16_t base_addr) {
+  uint16_t lo = regs.count(base_addr)     ? regs[base_addr]     : 0;
+  uint16_t hi = regs.count(base_addr + 1) ? regs[base_addr + 1] : 0;
+  return (int32_t)((uint32_t)hi << 16 | lo);
+}
+
+float ModbusTcpServer::get_voltage(uint8_t phase) {
+  if (phase < 1 || phase > 3) return 0.0f;
+  return read_s32l(registers_, 0x0000 + (phase - 1) * 2) / 10.0f;
+}
+
+float ModbusTcpServer::get_current(uint8_t phase) {
+  if (phase < 1 || phase > 3) return 0.0f;
+  return read_s32l(registers_, 0x000c + (phase - 1) * 2) / 1000.0f;
+}
+
+float ModbusTcpServer::get_power(uint8_t phase) {
+  if (phase < 1 || phase > 3) return 0.0f;
+  return read_s32l(registers_, 0x0012 + (phase - 1) * 2) / 10.0f;
+}
+
+float ModbusTcpServer::get_total_power() {
+  return read_s32l(registers_, 0x0028) / 10.0f;
+}
+
+float ModbusTcpServer::get_frequency() {
+  return (registers_.count(0x0033) ? registers_[0x0033] : 0) / 10.0f;
+}
+
+float ModbusTcpServer::get_energy_import() {
+  return read_s32l(registers_, 0x0034) / 10.0f;
+}
+
+float ModbusTcpServer::get_energy_export() {
+  return read_s32l(registers_, 0x004e) / 10.0f;
+}
+
+// ---------------------------------------------------------------------------
 // Modbus TCP frame parser
 // ---------------------------------------------------------------------------
 
