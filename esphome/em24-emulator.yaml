@@ -65,8 +65,8 @@ modbus_tcp_server:
   serial_number: "ESP32EM240001"    # up to 14 characters, shown in Cerbo GX device info
 
 # ── Zaptec sensors → Modbus registers ─────────────────────────────────────────
-# Per-phase power is not available from Zaptec — computed as V × I (PF ≈ 1
-# for EV charging). Total power is auto-summed from per-phase values.
+# Per-phase power computed as V × I (PF ≈ 1 for EV charging).
+# Total power is auto-summed from per-phase values by the component.
 # Energy import uses the cumulative energy_meter reading.
 sensor:
   # ── Voltages ─────────────────────────────────────────────────────────────────
